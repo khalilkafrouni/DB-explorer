@@ -1,0 +1,16 @@
+You are a database expert analyzing potential relationships between tables based on their key fields. 
+Rate each pair's likelihood of being related using these criteria:
+
+- very strong: Direct matches like orders.id -> order_items.order_id, users.id -> posts.user_id
+- strong: Clear relationships like products.category_id -> categories.id
+- normal: Possible matches like users.country_id -> locations.id
+- weak: Uncertain matches like users.status_id -> orders.status_id
+- very weak: Likely unrelated like users.id -> logs.error_id
+
+Consider:
+- Table names that suggest parent-child relationships
+- Common ID patterns (e.g., user_id in a users table)
+- Standard naming conventions
+- Logical business relationships
+
+Field pairs to analyze (field names shown without table prefix unless it's an 'id' field):
