@@ -6,10 +6,6 @@ def create_html_viewer(markdown_file: str, output_file: str = "diagram_viewer.ht
     with open(markdown_file, 'r') as f:
         md_content = f.read()
     
-    # Debug print to check content
-    print("\nDebug: Content being processed:")
-    print(md_content[:500])  # Print first 500 chars
-    
     # Properly escape the content for JavaScript
     md_content = (
         md_content
@@ -28,22 +24,32 @@ def create_html_viewer(markdown_file: str, output_file: str = "diagram_viewer.ht
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
             body {{
-                font-family: Arial, sans-serif;
                 margin: 0;
-                padding: 20px;
-                background: #fff;
-            }}
-            #content {{
-                max-width: 1200px;
-                margin: 0 auto;
+                padding: 0;
+                overflow: hidden;
+                height: 100vh;
+                width: 100vw;
+                font-family: Arial, sans-serif;
             }}
             #diagram {{
-                margin-top: 40px;
-                border-top: 1px solid #ddd;
-                padding-top: 20px;
+                width: 100vw;
+                height: 100vh;
+                cursor: grab;
+                background: white;
+            }}
+            #diagram.panning {{
+                cursor: grabbing;
             }}
             .mermaid {{
-                text-align: center;
+                width: 100%;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }}
+            .mermaid svg {{
+                max-width: none;
+                max-height: none;
             }}
             #zoom-controls {{
                 position: fixed;
@@ -68,7 +74,7 @@ def create_html_viewer(markdown_file: str, output_file: str = "diagram_viewer.ht
         </style>
     </head>
     <body>
-        <div id="content"></div>
+        <div id="diagram"></div>
         <div id="zoom-controls">
             <button onclick="zoomIn()">+</button>
             <button onclick="resetZoom()">Reset</button>
@@ -76,72 +82,104 @@ def create_html_viewer(markdown_file: str, output_file: str = "diagram_viewer.ht
         </div>
         
         <script>
-            // For debugging
-            console.log("Raw content:", `{md_content}`);
-            
             // Initialize mermaid
             mermaid.initialize({{ startOnLoad: false, theme: 'default' }});
             
-            // Split content into descriptions and diagram
+            // Get the diagram content
             const content = `{md_content}`;
-            console.log("Content after template:", content);
-            
-            const [descriptions, diagramSection] = content.split('```mermaid');
-            console.log("Descriptions:", descriptions);
-            console.log("Diagram section:", diagramSection);
-            
-            const diagram = diagramSection.split('```')[0];
-            console.log("Final diagram:", diagram);
-            
-            // Setup content
-            const contentDiv = document.getElementById('content');
-            
-            // Add descriptions
-            contentDiv.innerHTML = marked.parse(descriptions);
-            
-            // Add diagram container
-            const diagramDiv = document.createElement('div');
-            diagramDiv.id = 'diagram';
-            contentDiv.appendChild(diagramDiv);
+            const diagram = content.split('```mermaid')[1].split('```')[0];
             
             // Render mermaid diagram
             mermaid.render('mermaid-diagram', diagram.trim()).then(result => {{
+                const diagramDiv = document.getElementById('diagram');
                 diagramDiv.innerHTML = result.svg;
                 
-                // Setup zoom functionality
+                // Setup zoom and pan functionality
                 const svg = diagramDiv.querySelector('svg');
                 let scale = 1;
+                let translateX = 0;
+                let translateY = 0;
+                let isDragging = false;
+                let startX, startY;
                 
-                function updateZoom() {{
-                    svg.style.transform = `scale(${{scale}})`;
-                    svg.style.transformOrigin = 'center';
+                function updateTransform() {{
+                    svg.style.transform = `translate(${{translateX}}px, ${{translateY}}px) scale(${{scale}})`;
                 }}
+                
+                // Initial centering
+                function centerDiagram() {{
+                    const svgRect = svg.getBoundingClientRect();
+                    const containerRect = diagramDiv.getBoundingClientRect();
+                    
+                    scale = Math.min(
+                        containerRect.width / svgRect.width,
+                        containerRect.height / svgRect.height
+                    ) * 0.9;
+                    
+                    translateX = (containerRect.width - svgRect.width * scale) / 2;
+                    translateY = (containerRect.height - svgRect.height * scale) / 2;
+                    
+                    updateTransform();
+                }}
+                
+                // Center on load
+                centerDiagram();
                 
                 window.zoomIn = function() {{
                     scale = Math.min(5, scale + 0.2);
-                    updateZoom();
+                    updateTransform();
                 }};
                 
                 window.zoomOut = function() {{
                     scale = Math.max(0.1, scale - 0.2);
-                    updateZoom();
+                    updateTransform();
                 }};
                 
                 window.resetZoom = function() {{
-                    scale = 1;
-                    updateZoom();
+                    centerDiagram();
                 }};
                 
                 // Mouse wheel zoom
                 diagramDiv.addEventListener('wheel', (e) => {{
                     e.preventDefault();
+                    const rect = diagramDiv.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
                     const delta = -Math.sign(e.deltaY) * 0.1;
-                    scale = Math.min(Math.max(0.1, scale + delta), 5);
-                    updateZoom();
+                    const newScale = Math.min(Math.max(0.1, scale + delta), 5);
+                    
+                    // Adjust position to zoom toward mouse
+                    if (newScale !== scale) {{
+                        translateX = x - (x - translateX) * newScale / scale;
+                        translateY = y - (y - translateY) * newScale / scale;
+                        scale = newScale;
+                        updateTransform();
+                    }}
+                }});
+                
+                // Pan functionality
+                diagramDiv.addEventListener('mousedown', (e) => {{
+                    isDragging = true;
+                    diagramDiv.classList.add('panning');
+                    startX = e.clientX - translateX;
+                    startY = e.clientY - translateY;
+                }});
+                
+                window.addEventListener('mousemove', (e) => {{
+                    if (!isDragging) return;
+                    translateX = e.clientX - startX;
+                    translateY = e.clientY - startY;
+                    updateTransform();
+                }});
+                
+                window.addEventListener('mouseup', () => {{
+                    isDragging = false;
+                    diagramDiv.classList.remove('panning');
                 }});
             }}).catch(error => {{
                 console.error('Mermaid rendering error:', error);
-                diagramDiv.innerHTML = '<pre>' + diagram + '</pre>';
+                document.getElementById('diagram').innerHTML = '<pre>' + diagram + '</pre>';
             }});
         </script>
     </body>
