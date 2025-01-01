@@ -6,7 +6,19 @@ import tomli
 with open("secrets.toml", "rb") as f:
     secrets = tomli.load(f)
 
-client = OpenAI(api_key=secrets['openai']['api_key'])
+# client = OpenAI(api_key=secrets['openai']['api_key'])  # Uncomment this line
+
+def format_matches_for_openai(matches: List[Dict]) -> List[Dict]:
+    """Convert FK-PK matches to format expected by OpenAI function"""
+    return [
+        {
+            'table1': match['table_pk'],
+            'field1': match['field_pk'],
+            'table2': match['table_fk'],
+            'field2': match['field_fk']
+        }
+        for match in matches
+    ]
 
 # Define the function that OpenAI will be forced to use
 matches_function = {
