@@ -2,6 +2,8 @@ from typing import List, Dict, Any
 import json
 from openai import OpenAI
 import tomli
+import pandas as pd
+from typing import Dict, Set
 
 with open("secrets.toml", "rb") as f:
     secrets = tomli.load(f)
@@ -68,3 +70,47 @@ def get_matches_from_openai(matches: List[Dict], client) -> List[str]:
         result = json.loads(function_call.arguments)
         return result["strengths"]
     return ["weak"] * len(matches)  # fallback
+
+def get_table_descriptions(engine, tables: Set[str], openai_client: OpenAI) -> Dict[str, str]:
+    """Get OpenAI-generated descriptions for each table based on sample data"""
+    descriptions = {}
+    total_tables = len(tables)
+    
+    print(f"\nGetting descriptions for {total_tables} tables...")
+    
+    for i, table in enumerate(tables, 1):
+        print(f"Processing table {i}/{total_tables}: {table}")
+        # Get 5 sample rows
+        try:
+            sample_df = pd.read_sql_query(f"SELECT * FROM {table} LIMIT 5", con=engine)
+            
+            # Format the sample data for OpenAI
+            sample_data = sample_df.to_string()
+            
+            # Create the prompt
+            prompt = f"""Given this sample of 5 rows from the '{table}' table:
+
+{sample_data}
+
+Write a brief (max 2 lines) description of what kind of data this table contains. 
+Focus on the business purpose of the table."""
+            
+            # Get description from OpenAI
+            response = openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=100
+            )
+            
+            # Store the description
+            description = response.choices[0].message.content.strip().replace('\n', ' ')
+            descriptions[table] = description
+            print(f"✓ Got description for {table}")
+            
+        except Exception as e:
+            descriptions[table] = f"Error getting description: {str(e)}"
+            print(f"✗ Error getting description for {table}: {str(e)}")
+    
+    print("\nFinished getting table descriptions")
+    return descriptions

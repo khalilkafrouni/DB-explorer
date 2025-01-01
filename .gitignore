@@ -2,3 +2,5 @@
 *.csv
 secrets.toml
 sandbox.ipynb
+*.html
+database_relationships.md

@@ -1,9 +1,16 @@
 from sqlalchemy import create_engine
 import pandas as pd
 import tomli
-from typing import List, Dict
+from typing import List, Dict, Set
 from openai import OpenAI
-from openai_handler import get_matches_from_openai, format_matches_for_openai
+from openai_handler import (
+    get_matches_from_openai, 
+    format_matches_for_openai,
+    get_table_descriptions
+)
+from pathlib import Path
+import shutil
+from renderer import create_html_viewer, serve_html, generate_mermaid_diagram
 
 def initialize_engine(username, password, url, db_name, port):
     engine = create_engine(f'mysql+pymysql://{username}:{password}@{url}:{port}/{db_name}')
@@ -285,147 +292,292 @@ def save_verified_matches(matches, verification_results, filename="verified_rela
     df.to_csv(filename, index=False)
     return filename
 
-# Initialize database connection
-with open("secrets.toml", "rb") as f:
-    secrets = tomli.load(f)
-
-username = secrets['bettor_fantasy']['db_username']
-password = secrets['bettor_fantasy']['db_password']
-db_url = secrets['bettor_fantasy']['db_url']
-db_name = secrets['bettor_fantasy']['db_name']
-port = secrets['bettor_fantasy']['port']
-
-engine = initialize_engine(username, password, db_url, db_name, port)
-
-# 1. Find potential keys
-potential_keys, untracked_tables = find_potential_keys(engine)
-potential_foreign_keys = find_potential_foreign_keys(engine, potential_keys)
-
-print("\nPotential primary keys found:", len(potential_keys))
-for table, field in potential_keys:
-    print(f"- {table}.{field}")
-
-print("\nPotential foreign keys found:", len(potential_foreign_keys))
-for table, field in potential_foreign_keys:
-    print(f"- {table}.{field}")
-
-# 2. Generate potential matches using naming patterns
-potential_matches = generate_fk_pk_matches(potential_keys, potential_foreign_keys)
-
-print(f"\nFound {len(potential_matches)} potential relationships to verify")
-
-# 3. Verify relationships
-verified_matches = []
-verification_results = []
-
-for match in potential_matches:
-    result = verify_relationship(
-        engine,
-        match['table_pk'],
-        match['field_pk'],
-        match['table_fk'],
-        match['field_fk']
-    )
+def get_and_save_table_descriptions(engine, tables, openai_client, filename="table_descriptions.csv"):
+    """
+    Get descriptions for all tables and save them to a CSV file
     
-    print(f"\n{match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
-    if result['verified']:
-        verified_matches.append(match)
-        verification_results.append(result)
-        stats = result['stats']
-        print("✓ Verified")
-        print(f"- Null percentage: {stats['null_percentage']:.1f}%")
-        print(f"- Distinct values: FK={stats['distinct_values_fk']}, PK={stats['distinct_values_pk']}")
-        print(f"- PK coverage: {stats['coverage']:.1f}%")
-    else:
-        print("✗ Failed:", result['reason'])
+    Args:
+        engine: SQLAlchemy engine
+        tables: Set of table names
+        openai_client: OpenAI client instance
+        filename: Output CSV file name
+    
+    Returns:
+        Dict[str, str]: Dictionary of table descriptions
+    """
+    # Get descriptions
+    table_descriptions = get_table_descriptions(engine, tables, openai_client)
+    
+    # Save to CSV
+    df = pd.DataFrame([
+        {'table': table, 'description': desc}
+        for table, desc in table_descriptions.items()
+    ])
+    df.to_csv(filename, index=False)
+    print(f"\nTable descriptions saved to: {filename}")
+    
+    return table_descriptions
 
-# 4. Save results
-if verified_matches:
-    csv_filename = save_verified_matches(verified_matches, verification_results)
-    print(f"\nVerified relationships saved to: {csv_filename}")
-
-# 5. Print detailed summary
-print(f"\nSummary:")
-print(f"Total potential primary keys: {len(potential_keys)}")
-print(f"Total potential foreign keys: {len(potential_foreign_keys)}")
-print(f"Total potential relationships: {len(potential_matches)}")
-print(f"Verified relationships: {len(verified_matches)}")
-print(f"Tables without unique identifiers: {len(untracked_tables)}")
-
-# Print verified relationships
-print("\nVerified Relationships:")
-for match in verified_matches:
-    print(f"✓ {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
-
-# Find and print unused primary keys
-used_pks = set((match['table_pk'], match['field_pk']) for match in verified_matches)
-unused_pks = [(table, field) for table, field in potential_keys if (table, field) not in used_pks]
-print("\nUnused Primary Keys:")
-for table, field in unused_pks:
-    print(f"- {table}.{field}")
-
-# Find and print unused foreign keys
-used_fks = set((match['table_fk'], match['field_fk']) for match in verified_matches)
-unused_fks = [(table, field) for table, field in potential_foreign_keys if (table, field) not in used_fks]
-print("\nUnused Foreign Keys:")
-for table, field in unused_fks:
-    print(f"- {table}.{field}")
-
-# Generate new potential matches from unused keys
-print("\nAnalyzing remaining possible relationships...")
-remaining_matches = generate_all_possible_matches(unused_pks, unused_fks)  # Use the new function here
-
-if remaining_matches:
-    # Initialize OpenAI client
+def main(csv_file: str = None):
+    """
+    Main function to analyze database relationships or plot from existing CSV
+    
+    Args:
+        csv_file (str, optional): Path to CSV file containing verified relationships
+    """
+    # Initialize OpenAI client first (we'll need it in both paths)
+    with open("secrets.toml", "rb") as f:
+        secrets = tomli.load(f)
+    
     openai_client = OpenAI(api_key=secrets['openai']['api_key'])
     
-    # Get OpenAI strength ratings
-    openai_formatted_matches = format_matches_for_openai(remaining_matches)
-    strengths = get_matches_from_openai(openai_formatted_matches, openai_client)
+    if csv_file:
+        # Read relationships from CSV
+        df = pd.read_csv(csv_file)
+        verified_matches = [
+            {
+                'table_pk': row['pk_table'],
+                'field_pk': row['pk_field'],
+                'table_fk': row['fk_table'],
+                'field_fk': row['fk_field']
+            }
+            for _, row in df.iterrows()
+            if row['verified']
+        ]
+        
+        # Get unique primary keys
+        potential_keys = set(
+            (match['table_pk'], match['field_pk'])
+            for match in verified_matches
+        )
+        
+        # Initialize database connection to get table descriptions
+        engine = initialize_engine(
+            secrets['bettor_fantasy']['db_username'],
+            secrets['bettor_fantasy']['db_password'],
+            secrets['bettor_fantasy']['db_url'],
+            secrets['bettor_fantasy']['db_name'],
+            secrets['bettor_fantasy']['port']
+        )
+        
+        # Get all unique tables
+        all_tables = set(match['table_pk'] for match in verified_matches) | set(match['table_fk'] for match in verified_matches)
+        
+        # Get table descriptions from saved file or generate new ones
+        desc_file = "table_descriptions.csv"
+        if Path(desc_file).exists():
+            desc_df = pd.read_csv(desc_file)
+            table_descriptions = dict(zip(desc_df['table'], desc_df['description']))
+            print(f"\nLoaded table descriptions from {desc_file}")
+        else:
+            table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
+        
+        # Generate and save Mermaid diagram with descriptions
+        diagram_file = generate_mermaid_diagram(verified_matches, potential_keys, table_descriptions=table_descriptions)
+        print(f"\nMermaid diagram saved to: {diagram_file}")
+        
+        # Create and open HTML viewer
+        html_file = "diagram_viewer.html"
+        create_html_viewer(diagram_file, html_file)
+        serve_html(html_file)
+        return
 
-    # Filter for strong matches only
-    strong_matches = []
-    for match, strength in zip(remaining_matches, strengths):
-        if strength in {'normal', 'strong', 'very strong'}:
-            strong_matches.append((match, strength))
+    # Initialize database connection
+    with open("secrets.toml", "rb") as f:
+        secrets = tomli.load(f)
 
-    if strong_matches:
-        print("\nVerifying promising relationships found between unused keys:")
-        print(strong_matches)
-        for match, strength in strong_matches:
-            print(f"\nChecking {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']} ({strength})")
-            
-            result = verify_relationship(
-                engine,
-                match['table_pk'],
-                match['field_pk'],
-                match['table_fk'],
-                match['field_fk']
-            )
-            
-            if result['verified']:
-                verified_matches.append(match)
-                verification_results.append(result)
-                stats = result['stats']
-                print("✓ Verified")
-                print(f"- Null percentage: {stats['null_percentage']:.1f}%")
-                print(f"- Distinct values: FK={stats['distinct_values_fk']}, PK={stats['distinct_values_pk']}")
-                print(f"- PK coverage: {stats['coverage']:.1f}%")
-            else:
-                print("✗ Failed:", result['reason'])
+    username = secrets['bettor_fantasy']['db_username']
+    password = secrets['bettor_fantasy']['db_password']
+    db_url = secrets['bettor_fantasy']['db_url']
+    db_name = secrets['bettor_fantasy']['db_name']
+    port = secrets['bettor_fantasy']['port']
 
-        # Update the CSV file with all verified relationships
-        if verified_matches:
-            csv_filename = save_verified_matches(verified_matches, verification_results)
-            print(f"\nUpdated verified relationships saved to: {csv_filename}")
+    engine = initialize_engine(username, password, db_url, db_name, port)
+
+    # 1. Find potential keys
+    potential_keys, untracked_tables = find_potential_keys(engine)
+    potential_foreign_keys = find_potential_foreign_keys(engine, potential_keys)
+
+    print("\nPotential primary keys found:", len(potential_keys))
+    for table, field in potential_keys:
+        print(f"- {table}.{field}")
+
+    print("\nPotential foreign keys found:", len(potential_foreign_keys))
+    for table, field in potential_foreign_keys:
+        print(f"- {table}.{field}")
+
+    # 2. Generate potential matches using naming patterns
+    potential_matches = generate_fk_pk_matches(potential_keys, potential_foreign_keys)
+
+    print(f"\nFound {len(potential_matches)} potential relationships to verify")
+
+    # 3. Verify relationships
+    verified_matches = []
+    verification_results = []
+
+    for match in potential_matches:
+        result = verify_relationship(
+            engine,
+            match['table_pk'],
+            match['field_pk'],
+            match['table_fk'],
+            match['field_fk']
+        )
+        
+        print(f"\n{match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
+        if result['verified']:
+            verified_matches.append(match)
+            verification_results.append(result)
+            stats = result['stats']
+            print("✓ Verified")
+            print(f"- Null percentage: {stats['null_percentage']:.1f}%")
+            print(f"- Distinct values: FK={stats['distinct_values_fk']}, PK={stats['distinct_values_pk']}")
+            print(f"- PK coverage: {stats['coverage']:.1f}%")
+        else:
+            print("✗ Failed:", result['reason'])
+
+    # 4. Save results
+    if verified_matches:
+        csv_filename = save_verified_matches(verified_matches, verification_results)
+        print(f"\nVerified relationships saved to: {csv_filename}")
+
+    # 5. Print detailed summary
+    print(f"\nSummary:")
+    print(f"Total potential primary keys: {len(potential_keys)}")
+    print(f"Total potential foreign keys: {len(potential_foreign_keys)}")
+    print(f"Total potential relationships: {len(potential_matches)}")
+    print(f"Verified relationships: {len(verified_matches)}")
+    print(f"Tables without unique identifiers: {len(untracked_tables)}")
+
+    # Print verified relationships
+    print("\nVerified Relationships:")
+    for match in verified_matches:
+        print(f"✓ {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
+
+    # Find and print unused primary keys
+    used_pks = set((match['table_pk'], match['field_pk']) for match in verified_matches)
+    unused_pks = [(table, field) for table, field in potential_keys if (table, field) not in used_pks]
+    print("\nUnused Primary Keys:")
+    for table, field in unused_pks:
+        print(f"- {table}.{field}")
+
+    # Find and print unused foreign keys
+    used_fks = set((match['table_fk'], match['field_fk']) for match in verified_matches)
+    unused_fks = [(table, field) for table, field in potential_foreign_keys if (table, field) not in used_fks]
+    print("\nUnused Foreign Keys:")
+    for table, field in unused_fks:
+        print(f"- {table}.{field}")
+
+    # Generate new potential matches from unused keys
+    print("\nAnalyzing remaining possible relationships...")
+    remaining_matches = generate_all_possible_matches(unused_pks, unused_fks)  # Use the new function here
+
+    if remaining_matches:
+        # Initialize OpenAI client
+        openai_client = OpenAI(api_key=secrets['openai']['api_key'])
+        
+        # Get OpenAI strength ratings
+        openai_formatted_matches = format_matches_for_openai(remaining_matches)
+        strengths = get_matches_from_openai(openai_formatted_matches, openai_client)
+
+        # Filter for strong matches only
+        strong_matches = []
+        for match, strength in zip(remaining_matches, strengths):
+            if strength in {'normal', 'strong', 'very strong'}:
+                strong_matches.append((match, strength))
+
+        if strong_matches:
+            print("\nVerifying promising relationships found between unused keys:")
+            print(strong_matches)
+            for match, strength in strong_matches:
+                print(f"\nChecking {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']} ({strength})")
+                
+                result = verify_relationship(
+                    engine,
+                    match['table_pk'],
+                    match['field_pk'],
+                    match['table_fk'],
+                    match['field_fk']
+                )
+                
+                if result['verified']:
+                    verified_matches.append(match)
+                    verification_results.append(result)
+                    stats = result['stats']
+                    print("✓ Verified")
+                    print(f"- Null percentage: {stats['null_percentage']:.1f}%")
+                    print(f"- Distinct values: FK={stats['distinct_values_fk']}, PK={stats['distinct_values_pk']}")
+                    print(f"- PK coverage: {stats['coverage']:.1f}%")
+                else:
+                    print("✗ Failed:", result['reason'])
+
+            # Update the CSV file with all verified relationships
+            if verified_matches:
+                csv_filename = save_verified_matches(verified_matches, verification_results)
+                print(f"\nUpdated verified relationships saved to: {csv_filename}")
+        else:
+            print("\nNo promising relationships found between unused keys")
     else:
-        print("\nNo promising relationships found between unused keys")
-else:
-    print("\nNo additional potential relationships found between unused keys")
+        print("\nNo additional potential relationships found between unused keys")
 
-# Print final summary of all verified relationships
-print(f"\nFinal Summary (including newly verified relationships):")
-print(f"Total verified relationships: {len(verified_matches)}")
-for match in verified_matches:
-    print(f"✓ {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
+    # Print final summary of all verified relationships
+    print(f"\nFinal Summary (including newly verified relationships):")
+    print(f"Total verified relationships: {len(verified_matches)}")
+    for match in verified_matches:
+        print(f"✓ {match['table_pk']}.{match['field_pk']} <- {match['table_fk']}.{match['field_fk']}")
+
+    # Before generating the final diagram, get table descriptions
+    all_tables = set(table for table, _ in potential_keys) | set(match['table_fk'] for match in verified_matches)
+    
+    # Get table descriptions from saved file or generate new ones
+    desc_file = "table_descriptions.csv"
+    if Path(desc_file).exists():
+        desc_df = pd.read_csv(desc_file)
+        table_descriptions = dict(zip(desc_df['table'], desc_df['description']))
+        print(f"\nLoaded table descriptions from {desc_file}")
+    else:
+        table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
+    
+    # Generate and save Mermaid diagram with descriptions
+    diagram_file = generate_mermaid_diagram(verified_matches, potential_keys, table_descriptions=table_descriptions)
+    print(f"\nMermaid diagram saved to: {diagram_file}")
+    
+    # Create and open HTML viewer (moved outside the if block)
+    html_file = "diagram_viewer.html"
+    create_html_viewer(diagram_file, html_file)
+    serve_html(html_file)
+    return
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Analyze database relationships or generate diagram from CSV')
+    parser.add_argument('--csv', type=str, help='Path to CSV file containing verified relationships')
+    parser.add_argument('--refresh-descriptions', action='store_true', 
+                       help='Force regeneration of table descriptions')
+    
+    args = parser.parse_args()
+    
+    if args.refresh_descriptions:
+        # Initialize necessary components
+        with open("secrets.toml", "rb") as f:
+            secrets = tomli.load(f)
+        
+        openai_client = OpenAI(api_key=secrets['openai']['api_key'])
+        engine = initialize_engine(
+            secrets['bettor_fantasy']['db_username'],
+            secrets['bettor_fantasy']['db_password'],
+            secrets['bettor_fantasy']['db_url'],
+            secrets['bettor_fantasy']['db_name'],
+            secrets['bettor_fantasy']['port']
+        )
+        
+        # Get all tables from database
+        all_tables = set(df['tables_in_database']) if (df := get_all_tables(engine)).size > 0 else set()
+        
+        # Generate and save descriptions
+        table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
+        print("Table descriptions refreshed")
+    
+    main(args.csv)
 
