@@ -375,7 +375,7 @@ def main(csv_file: str = None):
         # Generate D3.js data and create HTML viewer
         d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
         html_file = "diagram_viewer.html"
-        create_html_viewer(d3_data, html_file)
+        create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
         serve_html(html_file)
         return
 
@@ -538,7 +538,7 @@ def main(csv_file: str = None):
     # Generate D3.js data and create HTML viewer
     d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
     html_file = "diagram_viewer.html"
-    create_html_viewer(d3_data, html_file)
+    create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
     serve_html(html_file)
     return
 

@@ -52,7 +52,7 @@ def generate_d3_data(verified_matches, primary_keys, table_descriptions=None):
     
     return {'nodes': nodes, 'links': links}
 
-def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
+def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: str = "Database"):
     """Create an HTML file with a D3.js visualization of the database relationships"""
     html_content = f"""
     <!DOCTYPE html>
@@ -70,10 +70,25 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
                 overflow: hidden;
                 font-family: 'JetBrains Mono', monospace;
             }}
+            #header {{
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                background: rgba(45, 52, 54, 0.95);
+                color: white;
+                padding: 16px;
+                text-align: center;
+                font-size: 24px;
+                font-weight: bold;
+                z-index: 1000;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            }}
             #diagram {{
                 width: 100%;
                 height: 100%;
                 background: white;
+                padding-top: 60px; /* Make space for header */
             }}
             .node rect {{
                 fill: #fff;
@@ -92,24 +107,42 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
                 stroke: #636e72;
                 stroke-width: 1.5px;
                 stroke-dasharray: 5,5;
+                cursor: pointer;
             }}
             .link-label {{
                 font-size: 10px;
                 fill: #636e72;
                 text-anchor: middle;
+                pointer-events: none;
             }}
             #tooltip {{
                 position: absolute;
                 display: none;
                 background: rgba(45, 52, 54, 0.95);
                 color: white;
-                padding: 12px;
+                padding: 12px 16px;
                 border-radius: 6px;
                 font-size: 12px;
-                max-width: 300px;
+                min-width: 200px;
+                max-width: 500px;
                 z-index: 1000;
                 pointer-events: none;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                word-wrap: break-word;
+                white-space: pre-wrap;
+            }}
+            #tooltip .title {{
+                font-weight: bold;
+                font-size: 14px;
+                margin-bottom: 8px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            }}
+            #tooltip .relationship {{
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+                font-family: 'JetBrains Mono', monospace;
             }}
             #zoom-controls {{
                 position: fixed;
@@ -139,6 +172,7 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
         </style>
     </head>
     <body>
+        <div id="header">DB Explorer: {db_name}</div>
         <div id="diagram"></div>
         <div id="tooltip"></div>
         <div id="zoom-controls">
@@ -151,7 +185,25 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
             window.addEventListener('load', function() {{
                 const data = {data};
                 const width = window.innerWidth;
-                const height = window.innerHeight;
+                const height = window.innerHeight - 60; // Adjust for header
+                
+                // Create temporary SVG to measure text width
+                const measureSvg = d3.select('body')
+                    .append('svg')
+                    .style('visibility', 'hidden')
+                    .style('position', 'absolute');
+                
+                // Function to measure text width
+                function getTextWidth(text, fontSize = '14px') {{
+                    const textElement = measureSvg
+                        .append('text')
+                        .style('font-size', fontSize)
+                        .style('font-family', "'JetBrains Mono', monospace")
+                        .text(text);
+                    const width = textElement.node().getBBox().width;
+                    textElement.remove();
+                    return width;
+                }}
                 
                 const svg = d3.select('#diagram')
                     .append('svg')
@@ -201,9 +253,20 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
                     const fieldHeight = 20;  // Height per field
                     const titleHeight = 30;  // Height for title
                     
-                    d.rectWidth = 200;  // Fixed width
+                    // Calculate width based on longest text
+                    const textsToMeasure = [
+                        d.id,
+                        d.fields.pk ? `PK ${{d.fields.pk}}` : '',
+                        ...d.fields.fks.map(fk => `FK ${{fk}}`)
+                    ];
+                    
+                    const maxWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text)));
+                    d.rectWidth = Math.max(200, maxWidth + 40);  // Minimum 200px, add padding
                     d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2);
                 }});
+                
+                // Remove temporary SVG
+                measureSvg.remove();
                 
                 // Add rectangles to nodes with calculated dimensions
                 node.append('rect')
@@ -248,9 +311,25 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
                 
                 const tooltip = d3.select('#tooltip');
                 
+                // Node tooltips
                 node.on('mouseover', function(event, d) {{
                     tooltip.style('display', 'block')
-                        .html(d.description)
+                        .html(`<div class="title">${{d.id}}</div>${{d.description}}`)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY + 10) + 'px');
+                }})
+                .on('mousemove', function(event) {{
+                    tooltip.style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY + 10) + 'px');
+                }})
+                .on('mouseout', function() {{
+                    tooltip.style('display', 'none');
+                }});
+                
+                // Link tooltips
+                link.on('mouseover', function(event, d) {{
+                    tooltip.style('display', 'block')
+                        .html(`<strong>Relationship:</strong><div class="relationship">${{d.source.id}}.${{d.sourceField}}<br>↓<br>${{d.target.id}}.${{d.targetField}}</div>`)
                         .style('left', (event.pageX + 10) + 'px')
                         .style('top', (event.pageY + 10) + 'px');
                 }})
@@ -308,21 +387,27 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html"):
                     svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
                 }};
                 
-                const bounds = g.node().getBBox();
-                const fullWidth = width;
-                const fullHeight = height;
-                const scale = 0.8 / Math.max(
-                    bounds.width / fullWidth,
-                    bounds.height / fullHeight
-                );
-                const transform = d3.zoomIdentity
-                    .translate(
-                        fullWidth/2 - scale * (bounds.x + bounds.width/2),
-                        fullHeight/2 - scale * (bounds.y + bounds.height/2)
-                    )
-                    .scale(scale);
-                
-                svg.call(zoom.transform, transform);
+                // Wait for simulation to settle before calculating initial zoom
+                simulation.on('end', () => {{
+                    const bounds = g.node().getBBox();
+                    const fullWidth = width;
+                    const fullHeight = height;
+                    
+                    // Calculate scale with more padding (0.6 instead of 0.8)
+                    const scale = 0.6 / Math.max(
+                        bounds.width / fullWidth,
+                        bounds.height / fullHeight
+                    );
+                    
+                    const transform = d3.zoomIdentity
+                        .translate(
+                            fullWidth/2 - scale * (bounds.x + bounds.width/2),
+                            fullHeight/2 - scale * (bounds.y + bounds.height/2)
+                        )
+                        .scale(scale);
+                    
+                    svg.call(zoom.transform, transform);
+                }});
             }});
         </script>
     </body>
