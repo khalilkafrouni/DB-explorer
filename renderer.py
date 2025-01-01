@@ -34,7 +34,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
             nodes[match['table_pk']] = {
                 'id': match['table_pk'],
                 'description': table_descriptions.get(match['table_pk'], ''),
-                'fields': {'pk': match['field_pk'], 'fks': []}
+                'fields': {'pk': match['field_pk'], 'fks': []},
+                'has_relationships': True  # Will be converted to true in JSON
             }
         
         # Add target node if not exists
@@ -42,7 +43,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
             nodes[match['table_fk']] = {
                 'id': match['table_fk'],
                 'description': table_descriptions.get(match['table_fk'], ''),
-                'fields': {'pk': 'null', 'fks': [match['field_fk']]}
+                'fields': {'pk': 'null', 'fks': [match['field_fk']]},
+                'has_relationships': True  # Will be converted to true in JSON
             }
         else:
             # Add FK to existing node
@@ -64,7 +66,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                 nodes[table] = {
                     'id': table,
                     'description': table_descriptions.get(table, ''),
-                    'fields': {'pk': field, 'fks': []}
+                    'fields': {'pk': field, 'fks': []},
+                    'has_relationships': False  # Will be converted to false in JSON
                 }
             else:
                 nodes[table]['fields']['pk'] = field
@@ -77,7 +80,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     nodes[table] = {
                         'id': table,
                         'description': table_descriptions.get(table, ''),
-                        'fields': {'pk': 'null', 'fks': [field]}
+                        'fields': {'pk': 'null', 'fks': [field]},
+                        'has_relationships': False  # Will be converted to false in JSON
                     }
                 else:
                     if field not in nodes[table]['fields']['fks']:
@@ -90,7 +94,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                 nodes[table] = {
                     'id': table,
                     'description': table_descriptions.get(table, ''),
-                    'fields': {'pk': 'null', 'fks': []}
+                    'fields': {'pk': 'null', 'fks': []},
+                    'has_relationships': False  # Will be converted to false in JSON
                 }
     
     # Convert all None values to 'null' strings in the final structure
@@ -104,7 +109,12 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
     }
 
 def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: str = "Database"):
-    """Create an HTML file with a D3.js visualization of the database relationships"""
+    """Create an HTML file with an interactive D3.js visualization"""
+    import json
+    
+    # Convert Python data to JSON string
+    json_data = json.dumps(data)
+    
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -234,7 +244,7 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: 
         
         <script>
             window.addEventListener('load', function() {{
-                const data = {data};
+                const data = {json_data};
                 const width = window.innerWidth;
                 const height = window.innerHeight - 60; // Adjust for header
                 
@@ -275,6 +285,12 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: 
                     .force('link', d3.forceLink(data.links).id(d => d.id).distance(250))
                     .force('charge', d3.forceManyBody().strength(-2000))
                     .force('center', d3.forceCenter(width / 2, height / 2))
+                    .force('x', d3.forceX(width / 2).strength(node => {{
+                        return node.has_relationships ? 0.01 : 0.1;
+                    }}))
+                    .force('y', d3.forceY(height / 2).strength(node => {{
+                        return node.has_relationships ? 0.01 : 0.1;
+                    }}))
                     .force('collision', d3.forceCollide().radius(150));
                 
                 const link = g.selectAll('.link')
@@ -349,12 +365,17 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: 
                         y += 20;
                     }}
                     
+                    // Get all FK relationships for this node
+                    const connectedFks = new Set(data.links
+                        .filter(l => l.source.id === d.id || l.target.id === d.id)
+                        .map(l => l.source.id === d.id ? l.sourceField : l.targetField));
+                    
                     d.fields.fks.forEach(fk => {{
                         g.append('text')
                             .attr('y', y)
                             .attr('text-anchor', 'middle')
                             .text(`FK ${{fk}}`)
-                            .style('fill', '#c0392b')
+                            .style('fill', connectedFks.has(fk) ? '#c0392b' : '#95a5a6')  // Grey for unmatched FKs
                             .style('font-size', '12px');
                         y += 20;
                     }});
@@ -440,7 +461,7 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: 
                 
                 // Wait for simulation to settle before calculating initial zoom
                 simulation.on('end', () => {{
-                    const bounds = g.node().getBBox();
+                const bounds = g.node().getBBox();
                     const fullWidth = width;
                     const fullHeight = height;
                     
@@ -450,14 +471,14 @@ def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: 
                         bounds.height / fullHeight
                     );
                     
-                    const transform = d3.zoomIdentity
-                        .translate(
+                const transform = d3.zoomIdentity
+                    .translate(
                             fullWidth/2 - scale * (bounds.x + bounds.width/2),
                             fullHeight/2 - scale * (bounds.y + bounds.height/2)
-                        )
-                        .scale(scale);
-                    
-                    svg.call(zoom.transform, transform);
+                    )
+                    .scale(scale);
+                
+                svg.call(zoom.transform, transform);
                 }});
             }});
         </script>
