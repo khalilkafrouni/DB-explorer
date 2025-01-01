@@ -258,39 +258,183 @@ def verify_relationship(engine, table_pk, field_pk, table_fk, field_fk, threshol
             'reason': f"Error during verification: {str(e)}"
         }
 
-def save_verified_matches(matches, verification_results, filename="verified_relationships.csv"):
-    """Save verified FK-PK relationships and their statistics to a CSV file"""
+def save_verified_matches(matches, verification_results, potential_keys=None, potential_foreign_keys=None, untracked_tables=None, filename="verified_relationships.csv"):
+    """
+    Save FK-PK relationships and their statistics to a CSV file, including unmatched and untracked tables
+    
+    Args:
+        matches: List of verified matches
+        verification_results: List of verification results
+        potential_keys: List of (table, field) tuples for potential primary keys
+        potential_foreign_keys: List of (table, field) tuples for potential foreign keys
+        untracked_tables: List of tables without identifiers
+        filename: Output CSV file
+    """
+    # First, save all verified relationships
     verified_data = []
     
+    # Track which tables and keys are used in relationships
+    used_pks = set()
+    used_fks = set()
+    tables_in_relationships = set()
+    
+    # Process verified matches
     for match, result in zip(matches, verification_results):
         data = {
-            'pk_table': match['table_pk'],
-            'pk_field': match['field_pk'],
-            'fk_table': match['table_fk'],
-            'fk_field': match['field_fk'],
-            'verified': result['verified']
+            'table_name': match['table_pk'],
+            'field_name': match['field_pk'],
+            'field_type': 'PK',
+            'relationship': f"→ {match['table_fk']}.{match['field_fk']}",
+            'verified': result['verified'],
+            'status': 'verified' if result['verified'] else result['reason']
         }
         
         if result['verified']:
             data.update({
-                'reason': 'verified',
-                **result['stats']
+                'referential_integrity': True,
+                'null_percentage': result['stats']['null_percentage'],
+                'distinct_values_source': result['stats']['distinct_values_pk'],
+                'distinct_values_target': result['stats']['distinct_values_fk'],
+                'coverage': result['stats']['coverage']
             })
         else:
             data.update({
-                'reason': result['reason'],
                 'referential_integrity': False,
                 'null_percentage': None,
-                'distinct_values_fk': None,
-                'distinct_values_pk': None,
+                'distinct_values_source': None,
+                'distinct_values_target': None,
                 'coverage': None
             })
             
         verified_data.append(data)
+        
+        # Add FK entry
+        fk_data = {
+            'table_name': match['table_fk'],
+            'field_name': match['field_fk'],
+            'field_type': 'FK',
+            'relationship': f"← {match['table_pk']}.{match['field_pk']}",
+            'verified': result['verified'],
+            'status': 'verified' if result['verified'] else result['reason'],
+            'referential_integrity': data['referential_integrity'],
+            'null_percentage': data['null_percentage'],
+            'distinct_values_source': data['distinct_values_target'],
+            'distinct_values_target': data['distinct_values_source'],
+            'coverage': data['coverage']
+        }
+        verified_data.append(fk_data)
+        
+        # Track used keys and tables
+        used_pks.add((match['table_pk'], match['field_pk']))
+        used_fks.add((match['table_fk'], match['field_fk']))
+        tables_in_relationships.add(match['table_pk'])
+        tables_in_relationships.add(match['table_fk'])
+    
+    # Add unused primary keys if provided
+    if potential_keys:
+        for table, field in potential_keys:
+            if (table, field) not in used_pks:
+                verified_data.append({
+                    'table_name': table,
+                    'field_name': field,
+                    'field_type': 'PK',
+                    'relationship': 'No relationships',
+                    'verified': False,
+                    'status': 'unused primary key',
+                    'referential_integrity': None,
+                    'null_percentage': None,
+                    'distinct_values_source': None,
+                    'distinct_values_target': None,
+                    'coverage': None
+                })
+                tables_in_relationships.add(table)
+    
+    # Add unused foreign keys if provided
+    if potential_foreign_keys:
+        for table, field in potential_foreign_keys:
+            if (table, field) not in used_fks:
+                verified_data.append({
+                    'table_name': table,
+                    'field_name': field,
+                    'field_type': 'FK',
+                    'relationship': 'No relationships',
+                    'verified': False,
+                    'status': 'unused foreign key',
+                    'referential_integrity': None,
+                    'null_percentage': None,
+                    'distinct_values_source': None,
+                    'distinct_values_target': None,
+                    'coverage': None
+                })
+                tables_in_relationships.add(table)
+    
+    # Add untracked tables if provided
+    if untracked_tables:
+        for table in untracked_tables:
+            if table not in tables_in_relationships:
+                verified_data.append({
+                    'table_name': table,
+                    'field_name': None,
+                    'field_type': None,
+                    'relationship': None,
+                    'verified': False,
+                    'status': 'no identifiers detected',
+                    'referential_integrity': None,
+                    'null_percentage': None,
+                    'distinct_values_source': None,
+                    'distinct_values_target': None,
+                    'coverage': None
+                })
     
     df = pd.DataFrame(verified_data)
     df.to_csv(filename, index=False)
     return filename
+
+def read_verified_matches(csv_file):
+    """Read and parse verified matches from CSV file"""
+    df = pd.read_csv(csv_file)
+    verified_matches = []
+    
+    # First get all PK entries
+    pk_df = df[df['field_type'] == 'PK']
+    for _, pk_row in pk_df.iterrows():
+        if pd.isna(pk_row['relationship']) or pk_row['relationship'] == 'No relationships':
+            continue
+            
+        # Extract FK info from relationship string (format: "→ table.field")
+        try:
+            fk_info = pk_row['relationship'].split(' ')[1]  # Get "table.field"
+            fk_table, fk_field = fk_info.split('.')
+            
+            match = {
+                'table_pk': pk_row['table_name'],
+                'field_pk': pk_row['field_name'],
+                'table_fk': fk_table,
+                'field_fk': fk_field
+            }
+            verified_matches.append(match)
+        except (IndexError, ValueError):
+            print(f"Warning: Could not parse relationship '{pk_row['relationship']}' for {pk_row['table_name']}.{pk_row['field_name']}")
+    
+    # Get unique primary keys
+    potential_keys = set(
+        (row['table_name'], row['field_name'])
+        for _, row in df[df['field_type'] == 'PK'].iterrows()
+    )
+    
+    # Get unique foreign keys
+    potential_foreign_keys = set(
+        (row['table_name'], row['field_name'])
+        for _, row in df[df['field_type'] == 'FK'].iterrows()
+    )
+    
+    # Get untracked tables
+    untracked_tables = [
+        row['table_name']
+        for _, row in df[df['status'] == 'no identifiers detected'].iterrows()
+    ]
+    
+    return verified_matches, potential_keys, potential_foreign_keys, untracked_tables
 
 def get_and_save_table_descriptions(engine, tables, openai_client, filename="table_descriptions.csv"):
     """
@@ -333,23 +477,7 @@ def main(csv_file: str = None):
     
     if csv_file:
         # Read relationships from CSV
-        df = pd.read_csv(csv_file)
-        verified_matches = [
-            {
-                'table_pk': row['pk_table'],
-                'field_pk': row['pk_field'],
-                'table_fk': row['fk_table'],
-                'field_fk': row['fk_field']
-            }
-            for _, row in df.iterrows()
-            if row['verified']
-        ]
-        
-        # Get unique primary keys
-        potential_keys = set(
-            (match['table_pk'], match['field_pk'])
-            for match in verified_matches
-        )
+        verified_matches, potential_keys, potential_foreign_keys, untracked_tables = read_verified_matches(csv_file)
         
         # Initialize database connection to get table descriptions
         engine = initialize_engine(
@@ -363,6 +491,11 @@ def main(csv_file: str = None):
         # Get all unique tables
         all_tables = set(match['table_pk'] for match in verified_matches) | set(match['table_fk'] for match in verified_matches)
         
+        # Add tables without relationships
+        all_tables.update(table for table, _ in potential_keys)
+        all_tables.update(table for table, _ in potential_foreign_keys)
+        all_tables.update(untracked_tables)
+        
         # Get table descriptions from saved file or generate new ones
         desc_file = "table_descriptions.csv"
         if Path(desc_file).exists():
@@ -373,7 +506,13 @@ def main(csv_file: str = None):
             table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
         
         # Generate D3.js data and create HTML viewer
-        d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
+        d3_data = generate_d3_data(
+            verified_matches, 
+            potential_keys,
+            potential_foreign_keys=potential_foreign_keys,
+            untracked_tables=untracked_tables,
+            table_descriptions=table_descriptions
+        )
         html_file = "diagram_viewer.html"
         create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
         serve_html(html_file)
@@ -435,7 +574,13 @@ def main(csv_file: str = None):
 
     # 4. Save results
     if verified_matches:
-        csv_filename = save_verified_matches(verified_matches, verification_results)
+        csv_filename = save_verified_matches(
+            verified_matches, 
+            verification_results,
+            potential_keys=potential_keys,
+            potential_foreign_keys=potential_foreign_keys,
+            untracked_tables=untracked_tables
+        )
         print(f"\nVerified relationships saved to: {csv_filename}")
 
     # 5. Print detailed summary
@@ -510,7 +655,13 @@ def main(csv_file: str = None):
 
             # Update the CSV file with all verified relationships
             if verified_matches:
-                csv_filename = save_verified_matches(verified_matches, verification_results)
+                csv_filename = save_verified_matches(
+                    verified_matches, 
+                    verification_results,
+                    potential_keys=potential_keys,
+                    potential_foreign_keys=potential_foreign_keys,
+                    untracked_tables=untracked_tables
+                )
                 print(f"\nUpdated verified relationships saved to: {csv_filename}")
         else:
             print("\nNo promising relationships found between unused keys")
@@ -536,7 +687,13 @@ def main(csv_file: str = None):
         table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
     
     # Generate D3.js data and create HTML viewer
-    d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
+    d3_data = generate_d3_data(
+        verified_matches, 
+        potential_keys,
+        potential_foreign_keys=potential_foreign_keys,
+        untracked_tables=untracked_tables,
+        table_descriptions=table_descriptions
+    )
     html_file = "diagram_viewer.html"
     create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
     serve_html(html_file)

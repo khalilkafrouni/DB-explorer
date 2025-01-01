@@ -9,48 +9,99 @@ def serve_html(file_path: str):
     print(f"\nOpening diagram viewer in browser: {file_url}")
     webbrowser.open(file_url)
 
-def generate_d3_data(verified_matches, primary_keys, table_descriptions=None):
-    """Generate JSON data structure for D3.js visualization"""
-    # Collect all tables and their fields
-    tables = {}
-    for table, field in primary_keys:
-        if table not in tables:
-            tables[table] = {'pk': field, 'fks': [], 'description': table_descriptions.get(table, '')}
+def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untracked_tables=None, table_descriptions=None):
+    """
+    Generate data structure for D3.js visualization
     
-    for match in verified_matches:
-        fk_table = match['table_fk']
-        if fk_table not in tables:
-            tables[fk_table] = {
-                'pk': None, 
-                'fks': [], 
-                'description': table_descriptions.get(fk_table, '')
+    Args:
+        matches: List of verified matches
+        potential_keys: List of (table, field) tuples for potential primary keys
+        potential_foreign_keys: List of (table, field) tuples for potential foreign keys
+        untracked_tables: List of tables without identifiers
+        table_descriptions: Dict of table descriptions
+    """
+    nodes = {}
+    links = []
+    
+    # Track used keys
+    used_pks = set((match['table_pk'], match['field_pk']) for match in matches)
+    used_fks = set((match['table_fk'], match['field_fk']) for match in matches)
+    
+    # Process verified matches
+    for match in matches:
+        # Add source node if not exists
+        if match['table_pk'] not in nodes:
+            nodes[match['table_pk']] = {
+                'id': match['table_pk'],
+                'description': table_descriptions.get(match['table_pk'], ''),
+                'fields': {'pk': match['field_pk'], 'fks': []}
             }
-        tables[fk_table]['fks'].append(match['field_fk'])
-    
-    # Create nodes and links for D3
-    nodes = [
-        {
-            'id': table,
-            'description': data['description'],
-            'fields': {
-                'pk': data['pk'] if data['pk'] is not None else 'null',
-                'fks': data['fks']
+        
+        # Add target node if not exists
+        if match['table_fk'] not in nodes:
+            nodes[match['table_fk']] = {
+                'id': match['table_fk'],
+                'description': table_descriptions.get(match['table_fk'], ''),
+                'fields': {'pk': 'null', 'fks': [match['field_fk']]}
             }
-        }
-        for table, data in tables.items()
-    ]
-    
-    links = [
-        {
+        else:
+            # Add FK to existing node
+            if match['field_fk'] not in nodes[match['table_fk']]['fields']['fks']:
+                nodes[match['table_fk']]['fields']['fks'].append(match['field_fk'])
+        
+        # Add link
+        links.append({
             'source': match['table_pk'],
             'target': match['table_fk'],
             'sourceField': match['field_pk'],
             'targetField': match['field_fk']
-        }
-        for match in verified_matches
-    ]
+        })
     
-    return {'nodes': nodes, 'links': links}
+    # Add unused primary keys
+    for table, field in potential_keys:
+        if (table, field) not in used_pks:
+            if table not in nodes:
+                nodes[table] = {
+                    'id': table,
+                    'description': table_descriptions.get(table, ''),
+                    'fields': {'pk': field, 'fks': []}
+                }
+            else:
+                nodes[table]['fields']['pk'] = field
+    
+    # Add unused foreign keys
+    if potential_foreign_keys:
+        for table, field in potential_foreign_keys:
+            if (table, field) not in used_fks:
+                if table not in nodes:
+                    nodes[table] = {
+                        'id': table,
+                        'description': table_descriptions.get(table, ''),
+                        'fields': {'pk': 'null', 'fks': [field]}
+                    }
+                else:
+                    if field not in nodes[table]['fields']['fks']:
+                        nodes[table]['fields']['fks'].append(field)
+    
+    # Add untracked tables
+    if untracked_tables:
+        for table in untracked_tables:
+            if table not in nodes:
+                nodes[table] = {
+                    'id': table,
+                    'description': table_descriptions.get(table, ''),
+                    'fields': {'pk': 'null', 'fks': []}
+                }
+    
+    # Convert all None values to 'null' strings in the final structure
+    for node in nodes.values():
+        if node['fields']['pk'] is None:
+            node['fields']['pk'] = 'null'
+    
+    return {
+        'nodes': list(nodes.values()),
+        'links': links
+    }
 
 def create_html_viewer(data, output_file: str = "diagram_viewer.html", db_name: str = "Database"):
     """Create an HTML file with a D3.js visualization of the database relationships"""
