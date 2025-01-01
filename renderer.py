@@ -20,6 +20,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
         untracked_tables: List of tables without identifiers
         table_descriptions: Dict of table descriptions
     """
+    # First, create a mapping of tables to their primary keys
+    table_pks = {table: field for table, field in potential_keys}
+    
     nodes = {}
     links = []
     
@@ -35,7 +38,7 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                 'id': match['table_pk'],
                 'description': table_descriptions.get(match['table_pk'], ''),
                 'fields': {'pk': match['field_pk'], 'fks': []},
-                'has_relationships': True  # Will be converted to true in JSON
+                'has_relationships': True
             }
         
         # Add target node if not exists
@@ -43,8 +46,11 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
             nodes[match['table_fk']] = {
                 'id': match['table_fk'],
                 'description': table_descriptions.get(match['table_fk'], ''),
-                'fields': {'pk': 'null', 'fks': [match['field_fk']]},
-                'has_relationships': True  # Will be converted to true in JSON
+                'fields': {
+                    'pk': table_pks.get(match['table_fk'], 'null'),  # Use PK from mapping if available
+                    'fks': [match['field_fk']]
+                },
+                'has_relationships': True
             }
         else:
             # Add FK to existing node
@@ -67,7 +73,7 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     'id': table,
                     'description': table_descriptions.get(table, ''),
                     'fields': {'pk': field, 'fks': []},
-                    'has_relationships': False  # Will be converted to false in JSON
+                    'has_relationships': False
                 }
             else:
                 nodes[table]['fields']['pk'] = field
@@ -80,8 +86,11 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     nodes[table] = {
                         'id': table,
                         'description': table_descriptions.get(table, ''),
-                        'fields': {'pk': 'null', 'fks': [field]},
-                        'has_relationships': False  # Will be converted to false in JSON
+                        'fields': {
+                            'pk': table_pks.get(table, 'null'),  # Use PK from mapping if available
+                            'fks': [field]
+                        },
+                        'has_relationships': False
                     }
                 else:
                     if field not in nodes[table]['fields']['fks']:
@@ -95,13 +104,8 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     'id': table,
                     'description': table_descriptions.get(table, ''),
                     'fields': {'pk': 'null', 'fks': []},
-                    'has_relationships': False  # Will be converted to false in JSON
+                    'has_relationships': False
                 }
-    
-    # Convert all None values to 'null' strings in the final structure
-    for node in nodes.values():
-        if node['fields']['pk'] is None:
-            node['fields']['pk'] = 'null'
     
     return {
         'nodes': list(nodes.values()),
