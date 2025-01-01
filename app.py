@@ -10,7 +10,7 @@ from openai_handler import (
 )
 from pathlib import Path
 import shutil
-from renderer import create_html_viewer, serve_html, generate_mermaid_diagram
+from renderer import create_html_viewer, serve_html, generate_d3_data, create_test_viewer
 
 def initialize_engine(username, password, url, db_name, port):
     engine = create_engine(f'mysql+pymysql://{username}:{password}@{url}:{port}/{db_name}')
@@ -372,13 +372,10 @@ def main(csv_file: str = None):
         else:
             table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
         
-        # Generate and save Mermaid diagram with descriptions
-        diagram_file = generate_mermaid_diagram(verified_matches, potential_keys, table_descriptions=table_descriptions)
-        print(f"\nMermaid diagram saved to: {diagram_file}")
-        
-        # Create and open HTML viewer
+        # Generate D3.js data and create HTML viewer
+        d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
         html_file = "diagram_viewer.html"
-        create_html_viewer(diagram_file, html_file)
+        create_html_viewer(d3_data, html_file)
         serve_html(html_file)
         return
 
@@ -538,13 +535,10 @@ def main(csv_file: str = None):
     else:
         table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
     
-    # Generate and save Mermaid diagram with descriptions
-    diagram_file = generate_mermaid_diagram(verified_matches, potential_keys, table_descriptions=table_descriptions)
-    print(f"\nMermaid diagram saved to: {diagram_file}")
-    
-    # Create and open HTML viewer (moved outside the if block)
+    # Generate D3.js data and create HTML viewer
+    d3_data = generate_d3_data(verified_matches, potential_keys, table_descriptions=table_descriptions)
     html_file = "diagram_viewer.html"
-    create_html_viewer(diagram_file, html_file)
+    create_html_viewer(d3_data, html_file)
     serve_html(html_file)
     return
 
@@ -560,6 +554,7 @@ if __name__ == "__main__":
     
     if args.refresh_descriptions:
         # Initialize necessary components
+        
         with open("secrets.toml", "rb") as f:
             secrets = tomli.load(f)
         
@@ -580,4 +575,3 @@ if __name__ == "__main__":
         print("Table descriptions refreshed")
     
     main(args.csv)
-
