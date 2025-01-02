@@ -12,8 +12,8 @@ from pathlib import Path
 import shutil
 from renderer import create_html_viewer, serve_html, generate_d3_data, create_test_viewer
 
-def initialize_engine(username, password, url, db_name, port):
-    engine = create_engine(f'mysql+pymysql://{username}:{password}@{url}:{port}/{db_name}')
+def initialize_engine(username, password, url, name, port):
+    engine = create_engine(f'mysql+pymysql://{username}:{password}@{url}:{port}/{name}')
     return engine
 
 def get_query(query, engine):
@@ -481,11 +481,11 @@ def main(csv_file: str = None):
         
         # Initialize database connection to get table descriptions
         engine = initialize_engine(
-            secrets['bettor_fantasy']['db_username'],
-            secrets['bettor_fantasy']['db_password'],
-            secrets['bettor_fantasy']['db_url'],
-            secrets['bettor_fantasy']['db_name'],
-            secrets['bettor_fantasy']['port']
+            secrets['db']['username'],
+            secrets['db']['password'],
+            secrets['db']['url'],
+            secrets['db']['name'],
+            secrets['db']['port']
         )
         
         # Get all unique tables
@@ -514,7 +514,7 @@ def main(csv_file: str = None):
             table_descriptions=table_descriptions
         )
         html_file = "diagram_viewer.html"
-        create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
+        create_html_viewer(d3_data, html_file, name=secrets['db']['name'])
         serve_html(html_file)
         return
 
@@ -522,13 +522,13 @@ def main(csv_file: str = None):
     with open("secrets.toml", "rb") as f:
         secrets = tomli.load(f)
 
-    username = secrets['bettor_fantasy']['db_username']
-    password = secrets['bettor_fantasy']['db_password']
-    db_url = secrets['bettor_fantasy']['db_url']
-    db_name = secrets['bettor_fantasy']['db_name']
-    port = secrets['bettor_fantasy']['port']
+    username = secrets['db']['username']
+    password = secrets['db']['password']
+    url = secrets['db']['url']
+    name = secrets['db']['name']
+    port = secrets['db']['port']
 
-    engine = initialize_engine(username, password, db_url, db_name, port)
+    engine = initialize_engine(username, password, url, name, port)
 
     # 1. Find potential keys
     potential_keys, untracked_tables = find_potential_keys(engine)
@@ -695,7 +695,7 @@ def main(csv_file: str = None):
         table_descriptions=table_descriptions
     )
     html_file = "diagram_viewer.html"
-    create_html_viewer(d3_data, html_file, db_name=secrets['bettor_fantasy']['db_name'])
+    create_html_viewer(d3_data, html_file, name=secrets['db']['name'])
     serve_html(html_file)
     return
 
@@ -717,11 +717,11 @@ if __name__ == "__main__":
         
         openai_client = OpenAI(api_key=secrets['openai']['api_key'])
         engine = initialize_engine(
-            secrets['bettor_fantasy']['db_username'],
-            secrets['bettor_fantasy']['db_password'],
-            secrets['bettor_fantasy']['db_url'],
-            secrets['bettor_fantasy']['db_name'],
-            secrets['bettor_fantasy']['port']
+            secrets['db']['username'],
+            secrets['db']['password'],
+            secrets['db']['url'],
+            secrets['db']['name'],
+            secrets['db']['port']
         )
         
         # Get all tables from database

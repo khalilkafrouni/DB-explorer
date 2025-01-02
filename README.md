@@ -22,6 +22,7 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
     - Unconnected tables with grey borders and text
     - Used foreign keys in red
     - Unused foreign keys in grey
+  - Automatic dark mode based on system preferences
 
 - **Comprehensive Analysis**
   - Tracks both used and unused keys
@@ -55,11 +56,11 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
 
 3. Create a `secrets.toml` file with your database and OpenAI credentials:
    ```toml
-   [database]
-   db_username = "your_username"
-   db_password = "your_password"
-   db_url = "localhost"
-   db_name = "your_database"
+   [db]
+   username = "your_username"
+   password = "your_password"
+   url = "localhost"
+   name = "your_database"
    port = 3306
 
    [openai]
@@ -111,6 +112,7 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
    - Uses D3.js for interactive visualization
    - Implements force-directed layout
    - Provides intuitive navigation and exploration
+   - Supports system-based dark mode
 
 ## Output Files
 
