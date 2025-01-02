@@ -1,3 +1,5 @@
+<img width="1530" alt="image" src="https://github.com/user-attachments/assets/dd5a7ca6-2053-4753-ad48-0849af70eb93" />
+
 # DB Explorer
 
 DB Explorer is a powerful tool that automatically analyzes MySQL database relationships and generates an interactive visualization of the database schema. It detects primary and foreign key relationships, verifies them through data analysis, and presents them in an intuitive, interactive diagram.
