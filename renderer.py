@@ -126,6 +126,44 @@ def create_html_viewer(data, output_file, db_name=None):
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        :root {{
+            --bg-color: #ffffff;
+            --text-color: #2d3436;
+            --header-bg: rgba(45, 52, 54, 0.95);
+            --header-text: #ffffff;
+            --node-bg: #ffffff;
+            --node-border: #2d3436;
+            --node-border-inactive: #95a5a6;
+            --link-color: #636e72;
+            --pk-color: #2980b9;
+            --fk-color: #c0392b;
+            --tooltip-bg: rgba(45, 52, 54, 0.95);
+            --tooltip-text: #ffffff;
+            --controls-bg: #ffffff;
+            --controls-hover: #f1f2f6;
+            --controls-border: #dfe6e9;
+        }}
+
+        @media (prefers-color-scheme: dark) {{
+            :root {{
+                --bg-color: #1a1a1a;
+                --text-color: #ecf0f1;
+                --header-bg: rgba(30, 30, 30, 0.95);
+                --header-text: #ecf0f1;
+                --node-bg: #2d3436;
+                --node-border: #ecf0f1;
+                --node-border-inactive: #636e72;
+                --link-color: #95a5a6;
+                --pk-color: #3498db;
+                --fk-color: #e74c3c;
+                --tooltip-bg: rgba(30, 30, 30, 0.95);
+                --tooltip-text: #ecf0f1;
+                --controls-bg: #2d3436;
+                --controls-hover: #34495e;
+                --controls-border: #4a4a4a;
+            }}
+        }}
+
         html, body {{
             margin: 0;
             padding: 0;
@@ -133,29 +171,31 @@ def create_html_viewer(data, output_file, db_name=None):
             height: 100%;
             overflow: hidden;
             font-family: 'JetBrains Mono', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
         }}
         #header {{
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            background: rgba(45, 52, 54, 0.95);
-            color: white;
+            background: var(--header-bg);
+            color: var(--header-text);
             padding: 16px;
             text-align: center;
             font-size: 24px;
             font-weight: bold;
             z-index: 1000;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         }}
         #diagram {{
             width: 100%;
             height: 100%;
-            background: white;
+            background: var(--bg-color);
             padding-top: 60px; /* Make space for header */
         }}
         .node rect {{
-            fill: #fff;
+            fill: var(--node-bg);
             stroke-width: 2px;
             cursor: pointer;
             rx: 4;
@@ -164,25 +204,26 @@ def create_html_viewer(data, output_file, db_name=None):
         .node text {{
             font-size: 12px;
             pointer-events: none;
+            fill: var(--text-color);
         }}
         .link {{
             fill: none;
-            stroke: #636e72;
+            stroke: var(--link-color);
             stroke-width: 1.5px;
             stroke-dasharray: 5,5;
             cursor: pointer;
         }}
         .link-label {{
             font-size: 10px;
-            fill: #636e72;
+            fill: var(--link-color);
             text-anchor: middle;
             pointer-events: none;
         }}
         #tooltip {{
             position: absolute;
             display: none;
-            background: rgba(45, 52, 54, 0.95);
-            color: white;
+            background: var(--tooltip-bg);
+            color: var(--tooltip-text);
             padding: 12px 16px;
             border-radius: 6px;
             font-size: 12px;
@@ -190,7 +231,7 @@ def create_html_viewer(data, output_file, db_name=None):
             max-width: 500px;
             z-index: 1000;
             pointer-events: none;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
             word-wrap: break-word;
             white-space: pre-wrap;
         }}
@@ -211,26 +252,27 @@ def create_html_viewer(data, output_file, db_name=None):
             position: fixed;
             bottom: 20px;
             right: 20px;
-            background: white;
+            background: var(--controls-bg);
             border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
             z-index: 1000;
             display: flex;
             overflow: hidden;
         }}
         #zoom-controls button {{
             border: none;
-            background: white;
+            background: var(--controls-bg);
+            color: var(--text-color);
             padding: 12px 16px;
             font-size: 16px;
             cursor: pointer;
             transition: background-color 0.2s;
         }}
         #zoom-controls button:hover {{
-            background: #f1f2f6;
+            background: var(--controls-hover);
         }}
         #zoom-controls button:not(:last-child) {{
-            border-right: 1px solid #dfe6e9;
+            border-right: 1px solid var(--controls-border);
         }}
     </style>
 </head>
@@ -343,7 +385,7 @@ def create_html_viewer(data, output_file, db_name=None):
                 .attr('height', d => d.rectHeight)
                 .attr('x', d => -d.rectWidth / 2)
                 .attr('y', d => -d.rectHeight / 2)
-                .style('stroke', d => d.has_relationships ? '#2d3436' : '#95a5a6');  // Grey border for unconnected tables
+                .style('stroke', d => d.has_relationships ? 'var(--node-border)' : 'var(--node-border-inactive)');
             
             // Add table names
             node.append('text')
@@ -352,7 +394,7 @@ def create_html_viewer(data, output_file, db_name=None):
                 .text(d => d.id)
                 .style('font-weight', 'bold')
                 .style('font-size', '14px')
-                .style('fill', d => d.has_relationships ? '#2d3436' : '#95a5a6');  // Grey text for unconnected tables
+                .style('fill', d => d.has_relationships ? 'var(--text-color)' : 'var(--node-border-inactive)');
             
             // Add fields with proper positioning
             node.each(function(d) {{
@@ -364,7 +406,7 @@ def create_html_viewer(data, output_file, db_name=None):
                         .attr('y', y)
                         .attr('text-anchor', 'middle')
                         .text(`PK ${{d.fields.pk}}`)
-                        .style('fill', d.has_relationships ? '#2980b9' : '#95a5a6')  // Grey for unconnected tables
+                        .style('fill', d.has_relationships ? 'var(--pk-color)' : 'var(--node-border-inactive)')
                         .style('font-size', '12px');
                     y += 20;
                 }}
@@ -379,7 +421,7 @@ def create_html_viewer(data, output_file, db_name=None):
                         .attr('y', y)
                         .attr('text-anchor', 'middle')
                         .text(`FK ${{fk}}`)
-                        .style('fill', connectedFks.has(fk) ? '#c0392b' : '#95a5a6')  // Grey for unmatched FKs
+                        .style('fill', connectedFks.has(fk) ? 'var(--fk-color)' : 'var(--node-border-inactive)')
                         .style('font-size', '12px');
                     y += 20;
                 }});
