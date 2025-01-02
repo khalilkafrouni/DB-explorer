@@ -351,7 +351,8 @@ def create_html_viewer(data, output_file, db_name=None):
                 .attr('text-anchor', 'middle')
                 .text(d => d.id)
                 .style('font-weight', 'bold')
-                .style('font-size', '14px');
+                .style('font-size', '14px')
+                .style('fill', d => d.has_relationships ? '#2d3436' : '#95a5a6');  // Grey text for unconnected tables
             
             // Add fields with proper positioning
             node.each(function(d) {{
@@ -363,7 +364,7 @@ def create_html_viewer(data, output_file, db_name=None):
                         .attr('y', y)
                         .attr('text-anchor', 'middle')
                         .text(`PK ${{d.fields.pk}}`)
-                        .style('fill', '#2980b9')
+                        .style('fill', d.has_relationships ? '#2980b9' : '#95a5a6')  // Grey for unconnected tables
                         .style('font-size', '12px');
                     y += 20;
                 }}
