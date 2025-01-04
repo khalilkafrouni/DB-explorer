@@ -390,7 +390,7 @@ def create_html_viewer(data, output_file, db_name=None):
             // Calculate rectangle dimensions based on content
             function updateNodeDimensions(d) {{
                 const numFields = (d.fields.pk ? 1 : 0) + d.fields.fks.length;
-                const padding = 20;  // Padding inside rectangle
+                const padding = 40;  // Increased padding inside rectangle
                 const fieldHeight = 20;  // Height per field
                 const titleHeight = 30;  // Height for title
                 
@@ -402,10 +402,13 @@ def create_html_viewer(data, output_file, db_name=None):
                     ...(d.expanded ? d.columns.map(col => `${{col.column_name}} (${{col.data_type}})`) : [])
                 ];
                 
+                // Get the maximum text width and add extra padding for safety
                 const maxWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text)));
-                d.rectWidth = Math.max(200, maxWidth + 40);  // Minimum 200px, add padding
+                d.rectWidth = Math.max(250, maxWidth + padding * 2);  // Minimum 250px, add generous padding
+                
+                // Calculate height including all elements
                 d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2) + 
-                    (d.expanded ? d.columns.length * fieldHeight : 0);
+                    (d.expanded ? (d.columns.length * fieldHeight + (d.columns.length > 0 ? 20 : 0)) : 0);  // Add extra space for separator
             }}
             
             node.each(updateNodeDimensions);
