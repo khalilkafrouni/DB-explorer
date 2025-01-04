@@ -355,9 +355,36 @@ def create_html_viewer(data, output_file, db_name=None):
             
             const g = svg.append('g');
             
+            // Calculate collision radius function (for reuse)
+            function getCollisionRadius(d) {{
+                // Base padding for all nodes
+                const basePadding = 40;
+                
+                // Ensure dimensions are calculated
+                if (!d.rectWidth || !d.rectHeight) {{
+                    updateNodeDimensions(d);
+                }}
+                
+                // Calculate the current node dimensions
+                const currentWidth = d.rectWidth || 250;
+                const currentHeight = d.rectHeight + (d.expanded ? (d.columns?.length || 0) * 25 : 0);
+                
+                // Calculate the diagonal of the rectangle (distance from center to corner)
+                const diagonal = Math.sqrt(Math.pow(currentWidth, 2) + Math.pow(currentHeight, 2)) / 2;
+                
+                // Add extra padding for expanded nodes
+                const expansionPadding = d.expanded ? 60 : 30;
+                
+                // Return the total radius including padding
+                return diagonal + basePadding + expansionPadding;
+            }}
+
             const simulation = d3.forceSimulation(data.nodes)
-                .force('link', d3.forceLink(data.links).id(d => d.id).distance(250))
-                .force('charge', d3.forceManyBody().strength(-2000))
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(300))
+                .force('charge', d3.forceManyBody()
+                    .strength(d => d.expanded ? -3000 : -1500)
+                    .distanceMin(200)
+                    .distanceMax(1000))
                 .force('center', d3.forceCenter(width / 2, height / 2))
                 .force('x', d3.forceX(width / 2).strength(node => {{
                     return node.has_relationships ? 0.01 : 0.1;
@@ -365,7 +392,24 @@ def create_html_viewer(data, output_file, db_name=None):
                 .force('y', d3.forceY(height / 2).strength(node => {{
                     return node.has_relationships ? 0.01 : 0.1;
                 }}))
-                .force('collision', d3.forceCollide().radius(150));
+                .force('collision', d3.forceCollide().radius(getCollisionRadius).strength(1).iterations(4));
+
+            simulation.on('tick', () => {{
+                link.attr('d', d => {{
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dr = Math.sqrt(dx * dx + dy * dy);
+                    return `M${{d.source.x}},${{d.source.y}}A${{dr}},${{dr}} 0 0,1 ${{d.target.x}},${{d.target.y}}`;
+                }});
+                
+                linkLabel.attr('transform', d => {{
+                    const x = (d.source.x + d.target.x) / 2;
+                    const y = (d.source.y + d.target.y) / 2;
+                    return `translate(${{x}},${{y}})`;
+                }});
+                
+                node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
+            }});
             
             const link = g.selectAll('.link')
                 .data(data.links)
@@ -524,7 +568,7 @@ def create_html_viewer(data, output_file, db_name=None):
                 // Update content
                 updateNodeContent(d3.select(this));
                 
-                // Restart simulation to adjust layout
+                // Gently adjust simulation
                 simulation.alpha(0.3).restart();
             }});
             
@@ -560,23 +604,6 @@ def create_html_viewer(data, output_file, db_name=None):
             }})
             .on('mouseout', function() {{
                 tooltip.style('display', 'none');
-            }});
-            
-            simulation.on('tick', () => {{
-                link.attr('d', d => {{
-                    const dx = d.target.x - d.source.x;
-                    const dy = d.target.y - d.source.y;
-                    const dr = Math.sqrt(dx * dx + dy * dy);
-                    return `M${{d.source.x}},${{d.source.y}}A${{dr}},${{dr}} 0 0,1 ${{d.target.x}},${{d.target.y}}`;
-                }});
-                
-                linkLabel.attr('transform', d => {{
-                    const x = (d.source.x + d.target.x) / 2;
-                    const y = (d.source.y + d.target.y) / 2;
-                    return `translate(${{x}},${{y}})`;
-                }});
-                
-                node.attr('transform', d => `translate(${{d.x}},${{d.y}})`);
             }});
             
             function dragstarted(event, d) {{
