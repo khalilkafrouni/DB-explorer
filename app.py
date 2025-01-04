@@ -11,6 +11,15 @@ from openai_handler import (
 from pathlib import Path
 import shutil
 from renderer import create_html_viewer, serve_html, generate_d3_data, create_test_viewer
+from datetime import datetime
+import os
+
+def create_output_directory(db_name: str) -> Path:
+    """Create a timestamped output directory for the current run"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = Path(f"{db_name}_{timestamp}")
+    output_dir.mkdir(exist_ok=True)
+    return output_dir
 
 def initialize_engine(username, password, url, name, port):
     engine = create_engine(f'mysql+pymysql://{username}:{password}@{url}:{port}/{name}')
@@ -477,6 +486,7 @@ def main(csv_file: str = None):
     
     if csv_file:
         # Read relationships from CSV
+        csv_path = Path(csv_file)
         verified_matches, potential_keys, potential_foreign_keys, untracked_tables = read_verified_matches(csv_file)
         
         # Initialize database connection to get table descriptions
@@ -497,12 +507,13 @@ def main(csv_file: str = None):
         all_tables.update(untracked_tables)
         
         # Get table descriptions from saved file or generate new ones
-        desc_file = "table_descriptions.csv"
-        if Path(desc_file).exists():
+        desc_file = csv_path.parent / "table_descriptions.csv"
+        if desc_file.exists():
             desc_df = pd.read_csv(desc_file)
             table_descriptions = dict(zip(desc_df['table'], desc_df['description']))
             print(f"\nLoaded table descriptions from {desc_file}")
         else:
+            print(f"\nWarning: Could not find {desc_file}, generating new descriptions...")
             table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
         
         # Generate D3.js data and create HTML viewer
@@ -513,8 +524,8 @@ def main(csv_file: str = None):
             untracked_tables=untracked_tables,
             table_descriptions=table_descriptions
         )
-        html_file = "diagram_viewer.html"
-        create_html_viewer(d3_data, html_file, name=secrets['db']['name'])
+        html_file = csv_path.parent / "diagram_viewer.html"
+        create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])
         serve_html(html_file)
         return
 
@@ -529,6 +540,10 @@ def main(csv_file: str = None):
     port = secrets['db']['port']
 
     engine = initialize_engine(username, password, url, name, port)
+
+    # Create output directory
+    output_dir = create_output_directory(name)
+    print(f"\nCreated output directory: {output_dir}")
 
     # 1. Find potential keys
     potential_keys, untracked_tables = find_potential_keys(engine)
@@ -579,7 +594,8 @@ def main(csv_file: str = None):
             verification_results,
             potential_keys=potential_keys,
             potential_foreign_keys=potential_foreign_keys,
-            untracked_tables=untracked_tables
+            untracked_tables=untracked_tables,
+            filename=output_dir / "verified_relationships.csv"
         )
         print(f"\nVerified relationships saved to: {csv_filename}")
 
@@ -660,7 +676,8 @@ def main(csv_file: str = None):
                     verification_results,
                     potential_keys=potential_keys,
                     potential_foreign_keys=potential_foreign_keys,
-                    untracked_tables=untracked_tables
+                    untracked_tables=untracked_tables,
+                    filename=output_dir / "verified_relationships.csv"
                 )
                 print(f"\nUpdated verified relationships saved to: {csv_filename}")
         else:
@@ -678,13 +695,8 @@ def main(csv_file: str = None):
     all_tables = set(table for table, _ in potential_keys) | set(match['table_fk'] for match in verified_matches)
     
     # Get table descriptions from saved file or generate new ones
-    desc_file = "table_descriptions.csv"
-    if Path(desc_file).exists():
-        desc_df = pd.read_csv(desc_file)
-        table_descriptions = dict(zip(desc_df['table'], desc_df['description']))
-        print(f"\nLoaded table descriptions from {desc_file}")
-    else:
-        table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
+    desc_file = output_dir / "table_descriptions.csv"
+    table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client, filename=desc_file)
     
     # Generate D3.js data and create HTML viewer
     d3_data = generate_d3_data(
@@ -694,8 +706,8 @@ def main(csv_file: str = None):
         untracked_tables=untracked_tables,
         table_descriptions=table_descriptions
     )
-    html_file = "diagram_viewer.html"
-    create_html_viewer(d3_data, html_file, name=secrets['db']['name'])
+    html_file = output_dir / "diagram_viewer.html"
+    create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])
     serve_html(html_file)
     return
 
