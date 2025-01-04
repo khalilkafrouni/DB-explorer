@@ -1,3 +1,6 @@
+// Store zoom instance at module level
+let activeZoom;
+
 function initializeVisualization(data) {
     const width = window.innerWidth;
     const height = window.innerHeight - 60; // Adjust for header
@@ -5,11 +8,13 @@ function initializeVisualization(data) {
     // Set database name
     document.getElementById('db-name').textContent = data.db_name || '';
     
-    // Create temporary SVG to measure text width
+    // Create permanent SVG to measure text width
     const measureSvg = d3.select('body')
         .append('svg')
+        .attr('id', 'measure-svg')
         .style('visibility', 'hidden')
-        .style('position', 'absolute');
+        .style('position', 'absolute')
+        .style('pointer-events', 'none');
     
     // Function to measure text width
     function getTextWidth(text, fontSize = '14px') {
@@ -28,13 +33,14 @@ function initializeVisualization(data) {
         .attr('width', width)
         .attr('height', height);
     
-    const zoom = d3.zoom()
+    // Create and store zoom instance
+    activeZoom = d3.zoom()
         .scaleExtent([0.1, 8])
         .on('zoom', (event) => {
             g.attr('transform', event.transform);
         });
     
-    svg.call(zoom);
+    svg.call(activeZoom);
     
     const g = svg.append('g');
     
@@ -123,17 +129,30 @@ function initializeVisualization(data) {
         
         // Calculate width based on longest text
         const titleWidth = getTextWidth(d.id, '14px');  // Use larger font size for title
+        console.log(`\nNode: ${d.id}`);
+        console.log(`Title width: ${titleWidth} - "${d.id}"`);
+        
         const textsToMeasure = [
             d.fields.pk ? `PK ${d.fields.pk}` : '',  // Primary key
             ...d.fields.fks.map(fk => `FK ${fk}`),  // Foreign keys
             ...(d.expanded ? d.columns.map(col => `${col.column_name} (${col.data_type})`) : [])  // Full column strings
         ].filter(Boolean);  // Remove empty strings
         
+        // Log each text width
+        const textWidths = textsToMeasure.map(text => ({
+            text,
+            width: getTextWidth(text, '12px')
+        }));
+        textWidths.forEach(({text, width}) => {
+            console.log(`Text width: ${width} - "${text}"`);
+        });
+        
         // Get the maximum text width from fields and columns
-        const maxContentWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text, '12px')));
+        const maxContentWidth = Math.max(...textWidths.map(t => t.width));
         
         // Use the larger of title width or content width, plus padding
         d.rectWidth = Math.max(300, Math.max(titleWidth, maxContentWidth) + padding * 2);
+        console.log(`Final rectangle width: ${d.rectWidth} (including ${padding * 2}px padding)\n`);
         
         // Calculate height including all elements
         d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2) + 
@@ -141,9 +160,6 @@ function initializeVisualization(data) {
     }
     
     node.each(updateNodeDimensions);
-    
-    // Remove temporary SVG
-    measureSvg.remove();
     
     // Add rectangles to nodes with calculated dimensions
     node.append('rect')
@@ -324,19 +340,22 @@ function initializeVisualization(data) {
             )
             .scale(scale);
         
-        svg.call(zoom.transform, transform);
+        svg.call(activeZoom.transform, transform);
     });
 }
 
-// Zoom control functions
+// Update zoom control functions to use activeZoom
 window.zoomIn = function() {
-    d3.select('#diagram svg').transition().duration(300).call(d3.zoom().scaleBy, 1.2);
+    const svg = d3.select('#diagram svg');
+    svg.transition().duration(300).call(activeZoom.scaleBy, 1.2);
 };
 
 window.zoomOut = function() {
-    d3.select('#diagram svg').transition().duration(300).call(d3.zoom().scaleBy, 0.8);
+    const svg = d3.select('#diagram svg');
+    svg.transition().duration(300).call(activeZoom.scaleBy, 0.8);
 };
 
 window.resetZoom = function() {
-    d3.select('#diagram svg').transition().duration(300).call(d3.zoom().transform, d3.zoomIdentity);
+    const svg = d3.select('#diagram svg');
+    svg.transition().duration(300).call(activeZoom.transform, d3.zoomIdentity);
 }; 
