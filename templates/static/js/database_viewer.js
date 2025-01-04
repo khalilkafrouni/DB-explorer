@@ -238,7 +238,7 @@ function initializeVisualization(data) {
                     .style('stroke', 'var(--node-border-inactive)')
                     .style('stroke-width', '1px')
                     .style('stroke-dasharray', '4,4');
-                y += 15;
+                y += 25;
                 
                 // Add remaining columns
                 remainingColumns.forEach(col => {
