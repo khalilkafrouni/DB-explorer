@@ -268,6 +268,37 @@ function initializeVisualization(data) {
         // Update content
         updateNodeContent(d3.select(this));
         
+        // Find connected nodes
+        const connectedNodes = new Set();
+        data.links.forEach(link => {
+            if (link.source.id === d.id) {
+                connectedNodes.add(link.target);
+            } else if (link.target.id === d.id) {
+                connectedNodes.add(link.source);
+            }
+        });
+
+        // Calculate new positions for connected nodes
+        connectedNodes.forEach(connectedNode => {
+            const dx = connectedNode.x - d.x;
+            const dy = connectedNode.y - d.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Calculate minimum required distance based on both nodes' collision radii
+            const minDistance = getCollisionRadius(d) + getCollisionRadius(connectedNode);
+            
+            // If nodes are too close, push the connected node outward
+            if (distance < minDistance) {
+                const scale = minDistance / (distance || 1); // Avoid division by zero
+                const newX = d.x + dx * scale;
+                const newY = d.y + dy * scale;
+                
+                // Update position with transition
+                connectedNode.fx = newX;
+                connectedNode.fy = newY;
+            }
+        });
+
         // Gently adjust simulation
         simulation.alpha(0.3).restart();
     });
