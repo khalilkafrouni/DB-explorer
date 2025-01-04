@@ -299,13 +299,25 @@ function initializeVisualization(data) {
                 const newX = d.x + dx * scale;
                 const newY = d.y + dy * scale;
                 
+                // Store current position before updating
+                const oldX = connectedNode.x;
+                const oldY = connectedNode.y;
+                
                 // Update position with transition
-                connectedNode.fx = newX;
-                connectedNode.fy = newY;
+                connectedNode.x = newX;
+                connectedNode.y = newY;
+                
+                // If node was fixed, update fixed position too
+                if (connectedNode.fx !== null) {
+                    connectedNode.fx += (newX - oldX);
+                }
+                if (connectedNode.fy !== null) {
+                    connectedNode.fy += (newY - oldY);
+                }
             }
         });
 
-        // Gently adjust simulation
+        // Reset simulation alpha to allow movement
         simulation.alpha(0.3).restart();
     });
     
@@ -352,6 +364,27 @@ function initializeVisualization(data) {
     function dragged(event, d) {
         d.fx = event.x;
         d.fy = event.y;
+
+        // Find connected nodes
+        const connectedNodes = new Set();
+        data.links.forEach(link => {
+            if (link.source.id === d.id) {
+                connectedNodes.add(link.target);
+            } else if (link.target.id === d.id) {
+                connectedNodes.add(link.source);
+            }
+        });
+
+        // Move connected nodes with dampened movement (30% of the main node's movement)
+        const damping = 0.3;
+        connectedNodes.forEach(connectedNode => {
+            if (!connectedNode.fx && !connectedNode.fy) {  // Only move nodes that aren't being dragged
+                const dx = event.x - d.x;
+                const dy = event.y - d.y;
+                connectedNode.x += dx * damping;
+                connectedNode.y += dy * damping;
+            }
+        });
     }
     
     function dragended(event, d) {
@@ -359,6 +392,16 @@ function initializeVisualization(data) {
         // Keep the node fixed at its final position
         d.fx = d.x;
         d.fy = d.y;
+
+        // Reset any temporary position adjustments on connected nodes
+        data.links.forEach(link => {
+            const connectedNode = link.source.id === d.id ? link.target : (link.target.id === d.id ? link.source : null);
+            if (connectedNode && !connectedNode.fx && !connectedNode.fy) {
+                // Only reset if the node isn't being dragged
+                connectedNode.fx = null;
+                connectedNode.fy = null;
+            }
+        });
     }
     
     // Remove auto-zoom on simulation end

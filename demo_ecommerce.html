@@ -492,6 +492,27 @@
             function dragged(event, d) {
                 event.subject.fx = event.x;
                 event.subject.fy = event.y;
+
+                // Find connected nodes
+                const connectedNodes = new Set();
+                data.links.forEach(link => {
+                    if (link.source.id === event.subject.id) {
+                        connectedNodes.add(link.target);
+                    } else if (link.target.id === event.subject.id) {
+                        connectedNodes.add(link.source);
+                    }
+                });
+
+                // Move connected nodes with dampened movement (30% of the main node's movement)
+                const damping = 0.3;
+                connectedNodes.forEach(connectedNode => {
+                    if (!connectedNode.fx && !connectedNode.fy) {  // Only move nodes that aren't being dragged
+                        const dx = event.x - event.subject.x;
+                        const dy = event.y - event.subject.y;
+                        connectedNode.x += dx * damping;
+                        connectedNode.y += dy * damping;
+                    }
+                });
             }
             
             function dragended(event, d) {
