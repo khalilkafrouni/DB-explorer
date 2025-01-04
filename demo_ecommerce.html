@@ -512,17 +512,10 @@
                 svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
             };
             
-            const bounds = g.node().getBBox();
-            const scale = 0.8 / Math.max(
-                bounds.width / width,
-                bounds.height / height
-            );
-            const transform = d3.zoomIdentity
-                .translate(width/2, height/2)
-                .scale(scale)
-                .translate(-bounds.x - bounds.width/2, -bounds.y - bounds.height/2);
-            
-            svg.call(zoom.transform, transform);
+            // Remove auto-zoom at initialization
+            simulation.on('end', () => {
+                // Do nothing, let user control zoom
+            });
         });
     </script>
 </body>

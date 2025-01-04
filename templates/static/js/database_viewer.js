@@ -361,26 +361,9 @@ function initializeVisualization(data) {
         d.fy = d.y;
     }
     
-    // Wait for simulation to settle before calculating initial zoom
+    // Remove auto-zoom on simulation end
     simulation.on('end', () => {
-        const bounds = g.node().getBBox();
-        const fullWidth = width;
-        const fullHeight = height;
-        
-        // Calculate scale with more padding (0.6 instead of 0.8)
-        const scale = 0.6 / Math.max(
-            bounds.width / fullWidth,
-            bounds.height / fullHeight
-        );
-        
-        const transform = d3.zoomIdentity
-            .translate(
-                fullWidth/2 - scale * (bounds.x + bounds.width/2),
-                fullHeight/2 - scale * (bounds.y + bounds.height/2)
-            )
-            .scale(scale);
-        
-        svg.call(activeZoom.transform, transform);
+        // Do nothing, let user control zoom
     });
 }
 
