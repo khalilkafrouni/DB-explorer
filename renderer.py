@@ -434,21 +434,23 @@ def create_html_viewer(data, output_file, db_name=None):
             // Calculate rectangle dimensions based on content
             function updateNodeDimensions(d) {{
                 const numFields = (d.fields.pk ? 1 : 0) + d.fields.fks.length;
-                const padding = 40;  // Increased padding inside rectangle
+                const padding = 40;  // Padding inside rectangle
                 const fieldHeight = 20;  // Height per field
                 const titleHeight = 30;  // Height for title
                 
                 // Calculate width based on longest text
+                const titleWidth = getTextWidth(d.id, '14px');  // Use larger font size for title
                 const textsToMeasure = [
-                    d.id,
-                    d.fields.pk ? `PK ${{d.fields.pk}}` : '',
-                    ...d.fields.fks.map(fk => `FK ${{fk}}`),
-                    ...(d.expanded ? d.columns.map(col => `${{col.column_name}} (${{col.data_type}})`) : [])
-                ];
+                    d.fields.pk ? `PK ${{d.fields.pk}}` : '',  // Primary key
+                    ...d.fields.fks.map(fk => `FK ${{fk}}`),  // Foreign keys
+                    ...(d.expanded ? d.columns.map(col => `${{col.column_name}} (${{col.data_type}})`) : [])  // Full column strings
+                ].filter(Boolean);  // Remove empty strings
                 
-                // Get the maximum text width and add extra padding for safety
-                const maxWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text)));
-                d.rectWidth = Math.max(250, maxWidth + padding * 2);  // Minimum 250px, add generous padding
+                // Get the maximum text width from fields and columns
+                const maxContentWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text, '12px')));
+                
+                // Use the larger of title width or content width, plus padding
+                d.rectWidth = Math.max(300, Math.max(titleWidth, maxContentWidth) + padding * 2);
                 
                 // Calculate height including all elements
                 d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2) + 
