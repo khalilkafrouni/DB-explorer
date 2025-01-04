@@ -13,6 +13,7 @@ import shutil
 from renderer import create_html_viewer, serve_html, generate_d3_data, create_test_viewer
 from datetime import datetime
 import os
+from package_viewer import package_viewer
 
 def create_output_directory(db_name: str) -> Path:
     """Create a timestamped output directory for the current run"""
@@ -500,12 +501,13 @@ def get_all_table_columns(engine, output_file: str = "table_columns.csv"):
     print(f"\nSaved table columns to: {output_file}")
     return df
 
-def main(csv_file: str = None):
+def main(csv_file: str = None, should_package: bool = False):
     """
     Main function to analyze database relationships or plot from existing CSV
     
     Args:
         csv_file (str, optional): Path to CSV file containing verified relationships
+        should_package (bool, optional): Whether to create a shareable package
     """
     # Initialize OpenAI client first (we'll need it in both paths)
     with open("secrets.toml", "rb") as f:
@@ -573,6 +575,12 @@ def main(csv_file: str = None):
         )
         html_file = csv_path.parent / "diagram_viewer.html"
         create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])
+        
+        # Create a package for sharing if requested
+        if should_package:
+            zip_path = package_viewer(csv_path.parent)
+            print(f"\nCreated shareable package at: {zip_path}")
+        
         serve_html(html_file)
         return
 
@@ -768,6 +776,12 @@ def main(csv_file: str = None):
     )
     html_file = output_dir / "diagram_viewer.html"
     create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])
+    
+    # Create a package for sharing if requested
+    if should_package:
+        zip_path = package_viewer(output_dir)
+        print(f"\nCreated shareable package at: {zip_path}")
+    
     serve_html(html_file)
     return
 
@@ -778,6 +792,8 @@ if __name__ == "__main__":
     parser.add_argument('--csv', type=str, help='Path to CSV file containing verified relationships')
     parser.add_argument('--refresh-descriptions', action='store_true', 
                        help='Force regeneration of table descriptions')
+    parser.add_argument('--package', action='store_true',
+                       help='Create a shareable package of the viewer and its dependencies')
     
     args = parser.parse_args()
     
@@ -803,4 +819,4 @@ if __name__ == "__main__":
         table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
         print("Table descriptions refreshed")
     
-    main(args.csv)
+    main(args.csv, args.package)

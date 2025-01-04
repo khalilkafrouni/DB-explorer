@@ -94,6 +94,21 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
    ```
    This will regenerate AI-powered table descriptions.
 
+4. Create a shareable package:
+   ```bash
+   python app.py --package
+   ```
+   This will:
+   - Run the analysis (or use `--csv` to load existing analysis)
+   - Create a zip file containing all necessary files for sharing
+   - The recipient can extract the zip and open `diagram_viewer.html` in any modern browser
+
+You can combine flags as needed:
+```bash
+python app.py --csv verified_relationships.csv --package  # Package existing analysis
+python app.py --refresh-descriptions --package  # Fresh analysis with new descriptions and package
+```
+
 ## How It Works
 
 1. **Primary Key Detection**
