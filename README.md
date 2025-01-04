@@ -16,7 +16,9 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
   - Dynamic force-directed graph layout
   - Zoom and pan functionality
   - Drag and drop nodes to rearrange
-  - Hover tooltips with table descriptions
+  - Expandable nodes showing full table structure
+  - Hover tooltips with table descriptions and relationships
+  - Connected nodes follow with dampened movement
   - Color-coded relationships:
     - Connected tables with black borders and text
     - Unconnected tables with grey borders and text
@@ -29,6 +31,7 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
   - Shows tables without detected identifiers
   - Provides detailed statistics about relationships
   - Exports findings to CSV for further analysis
+  - AI-powered table descriptions
 
 ## Requirements
 
@@ -110,14 +113,26 @@ DB Explorer is a powerful tool that automatically analyzes MySQL database relati
 
 4. **Visualization**
    - Uses D3.js for interactive visualization
-   - Implements force-directed layout
+   - Implements force-directed layout with collision detection
+   - Expandable nodes showing complete table structure
+   - Connected nodes move together with dampened motion
    - Provides intuitive navigation and exploration
    - Supports system-based dark mode
 
+## Interactive Features
+
+- **Node Expansion**: Click on any node to expand it and view all columns
+- **Node Dragging**: Drag nodes to rearrange the layout. Connected nodes will follow with dampened movement
+- **Tooltips**: Hover over nodes to see table descriptions and relationship details
+- **Zoom Controls**: Use the buttons in the bottom-right corner to zoom in/out or reset the view
+- **Automatic Spacing**: Nodes automatically maintain proper spacing when expanded or collapsed
+
 ## Output Files
 
+The tool generates several files in a timestamped directory:
 - `verified_relationships.csv`: Detailed analysis of all relationships
 - `table_descriptions.csv`: AI-generated descriptions of tables
+- `table_columns.csv`: Complete listing of all table columns and their properties
 - `diagram_viewer.html`: Interactive visualization of the database schema
 
 ## Contributing
