@@ -471,6 +471,35 @@ def get_and_save_table_descriptions(engine, tables, openai_client, filename="tab
     
     return table_descriptions
 
+def get_all_table_columns(engine, output_file: str = "table_columns.csv"):
+    """
+    Get all columns for each table in the database and save to CSV
+    
+    Args:
+        engine: SQLAlchemy engine
+        output_file: Path to save the CSV file
+    """
+    tables = get_all_tables(engine)
+    table_columns = []
+    
+    for table in tables['tables_in_database']:
+        columns = get_table_columns(table, engine)
+        for _, column in columns.iterrows():
+            table_columns.append({
+                'table_name': table,
+                'column_name': column['Field'],
+                'data_type': column['Type'],
+                'is_nullable': column['Null'],
+                'key_type': column['Key'],
+                'default_value': column['Default'],
+                'extra': column['Extra']
+            })
+    
+    df = pd.DataFrame(table_columns)
+    df.to_csv(output_file, index=False)
+    print(f"\nSaved table columns to: {output_file}")
+    return df
+
 def main(csv_file: str = None):
     """
     Main function to analyze database relationships or plot from existing CSV
@@ -516,13 +545,31 @@ def main(csv_file: str = None):
             print(f"\nWarning: Could not find {desc_file}, generating new descriptions...")
             table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
         
+        # Get table columns from saved file or generate new ones
+        columns_file = csv_path.parent / "table_columns.csv"
+        if columns_file.exists():
+            print(f"\nLoaded table columns from {columns_file}")
+            columns_df = pd.read_csv(columns_file)
+            table_columns = {
+                table: columns_df[columns_df['table_name'] == table].to_dict('records')
+                for table in all_tables
+            }
+        else:
+            print(f"\nWarning: Could not find {columns_file}, retrieving table columns...")
+            columns_df = get_all_table_columns(engine, columns_file)
+            table_columns = {
+                table: columns_df[columns_df['table_name'] == table].to_dict('records')
+                for table in all_tables
+            }
+        
         # Generate D3.js data and create HTML viewer
         d3_data = generate_d3_data(
             verified_matches, 
             potential_keys,
             potential_foreign_keys=potential_foreign_keys,
             untracked_tables=untracked_tables,
-            table_descriptions=table_descriptions
+            table_descriptions=table_descriptions,
+            table_columns=table_columns
         )
         html_file = csv_path.parent / "diagram_viewer.html"
         create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])
@@ -544,6 +591,10 @@ def main(csv_file: str = None):
     # Create output directory
     output_dir = create_output_directory(name)
     print(f"\nCreated output directory: {output_dir}")
+
+    # Get and save all table columns
+    columns_file = output_dir / "table_columns.csv"
+    get_all_table_columns(engine, columns_file)
 
     # 1. Find potential keys
     potential_keys, untracked_tables = find_potential_keys(engine)
@@ -698,13 +749,22 @@ def main(csv_file: str = None):
     desc_file = output_dir / "table_descriptions.csv"
     table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client, filename=desc_file)
     
+    # Get table columns
+    columns_file = output_dir / "table_columns.csv"
+    columns_df = get_all_table_columns(engine, columns_file)
+    table_columns = {
+        table: columns_df[columns_df['table_name'] == table].to_dict('records')
+        for table in all_tables
+    }
+    
     # Generate D3.js data and create HTML viewer
     d3_data = generate_d3_data(
         verified_matches, 
         potential_keys,
         potential_foreign_keys=potential_foreign_keys,
         untracked_tables=untracked_tables,
-        table_descriptions=table_descriptions
+        table_descriptions=table_descriptions,
+        table_columns=table_columns
     )
     html_file = output_dir / "diagram_viewer.html"
     create_html_viewer(d3_data, html_file, db_name=secrets['db']['name'])

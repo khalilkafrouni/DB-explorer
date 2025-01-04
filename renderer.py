@@ -9,7 +9,7 @@ def serve_html(file_path: str):
     print(f"\nOpening diagram viewer in browser: {file_url}")
     webbrowser.open(file_url)
 
-def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untracked_tables=None, table_descriptions=None):
+def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untracked_tables=None, table_descriptions=None, table_columns=None):
     """
     Generate data structure for D3.js visualization
     
@@ -19,6 +19,7 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
         potential_foreign_keys: List of (table, field) tuples for potential foreign keys
         untracked_tables: List of tables without identifiers
         table_descriptions: Dict of table descriptions
+        table_columns: Dict of table columns
     """
     # First, create a mapping of tables to their primary keys
     table_pks = {table: field for table, field in potential_keys}
@@ -38,7 +39,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                 'id': match['table_pk'],
                 'description': table_descriptions.get(match['table_pk'], ''),
                 'fields': {'pk': match['field_pk'], 'fks': []},
-                'has_relationships': True
+                'columns': table_columns.get(match['table_pk'], []) if table_columns else [],
+                'has_relationships': True,
+                'expanded': False
             }
         
         # Add target node if not exists
@@ -50,7 +53,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     'pk': table_pks.get(match['table_fk'], 'null'),  # Use PK from mapping if available
                     'fks': [match['field_fk']]
                 },
-                'has_relationships': True
+                'columns': table_columns.get(match['table_fk'], []) if table_columns else [],
+                'has_relationships': True,
+                'expanded': False
             }
         else:
             # Add FK to existing node
@@ -73,7 +78,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     'id': table,
                     'description': table_descriptions.get(table, ''),
                     'fields': {'pk': field, 'fks': []},
-                    'has_relationships': False
+                    'columns': table_columns.get(table, []) if table_columns else [],
+                    'has_relationships': False,
+                    'expanded': False
                 }
             else:
                 nodes[table]['fields']['pk'] = field
@@ -90,7 +97,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                             'pk': table_pks.get(table, 'null'),  # Use PK from mapping if available
                             'fks': [field]
                         },
-                        'has_relationships': False
+                        'columns': table_columns.get(table, []) if table_columns else [],
+                        'has_relationships': False,
+                        'expanded': False
                     }
                 else:
                     if field not in nodes[table]['fields']['fks']:
@@ -104,7 +113,9 @@ def generate_d3_data(matches, potential_keys, potential_foreign_keys=None, untra
                     'id': table,
                     'description': table_descriptions.get(table, ''),
                     'fields': {'pk': 'null', 'fks': []},
-                    'has_relationships': False
+                    'columns': table_columns.get(table, []) if table_columns else [],
+                    'has_relationships': False,
+                    'expanded': False
                 }
     
     return {
@@ -142,6 +153,7 @@ def create_html_viewer(data, output_file, db_name=None):
             --controls-bg: #ffffff;
             --controls-hover: #f1f2f6;
             --controls-border: #dfe6e9;
+            --column-bg: rgba(45, 52, 54, 0.05);
         }}
 
         @media (prefers-color-scheme: dark) {{
@@ -161,6 +173,7 @@ def create_html_viewer(data, output_file, db_name=None):
                 --controls-bg: #2d3436;
                 --controls-hover: #34495e;
                 --controls-border: #4a4a4a;
+                --column-bg: rgba(255, 255, 255, 0.05);
             }}
         }}
 
@@ -247,6 +260,23 @@ def create_html_viewer(data, output_file, db_name=None):
             padding-top: 8px;
             border-top: 1px solid rgba(255, 255, 255, 0.2);
             font-family: 'JetBrains Mono', monospace;
+        }}
+        .column-list {{
+            font-size: 11px;
+            background: var(--column-bg);
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 2px;
+        }}
+        .column-type {{
+            color: var(--link-color);
+            font-size: 10px;
+        }}
+        .column-pk {{
+            color: var(--pk-color);
+        }}
+        .column-fk {{
+            color: var(--fk-color);
         }}
         #zoom-controls {{
             position: fixed;
@@ -358,7 +388,7 @@ def create_html_viewer(data, output_file, db_name=None):
                     .on('end', dragended));
             
             // Calculate rectangle dimensions based on content
-            node.each(function(d) {{
+            function updateNodeDimensions(d) {{
                 const numFields = (d.fields.pk ? 1 : 0) + d.fields.fks.length;
                 const padding = 20;  // Padding inside rectangle
                 const fieldHeight = 20;  // Height per field
@@ -368,13 +398,17 @@ def create_html_viewer(data, output_file, db_name=None):
                 const textsToMeasure = [
                     d.id,
                     d.fields.pk ? `PK ${{d.fields.pk}}` : '',
-                    ...d.fields.fks.map(fk => `FK ${{fk}}`)
+                    ...d.fields.fks.map(fk => `FK ${{fk}}`),
+                    ...(d.expanded ? d.columns.map(col => `${{col.column_name}} (${{col.data_type}})`) : [])
                 ];
                 
                 const maxWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text)));
                 d.rectWidth = Math.max(200, maxWidth + 40);  // Minimum 200px, add padding
-                d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2);
-            }});
+                d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2) + 
+                    (d.expanded ? d.columns.length * fieldHeight : 0);
+            }}
+            
+            node.each(updateNodeDimensions);
             
             // Remove temporary SVG
             measureSvg.remove();
@@ -387,22 +421,29 @@ def create_html_viewer(data, output_file, db_name=None):
                 .attr('y', d => -d.rectHeight / 2)
                 .style('stroke', d => d.has_relationships ? 'var(--node-border)' : 'var(--node-border-inactive)');
             
-            // Add table names
-            node.append('text')
-                .attr('y', d => -d.rectHeight/2 + 20)
-                .attr('text-anchor', 'middle')
-                .text(d => d.id)
-                .style('font-weight', 'bold')
-                .style('font-size', '14px')
-                .style('fill', d => d.has_relationships ? 'var(--text-color)' : 'var(--node-border-inactive)');
-            
             // Add fields with proper positioning
-            node.each(function(d) {{
-                const g = d3.select(this);
+            function updateNodeContent(node) {{
+                // Remove existing content
+                node.selectAll('.field-text').remove();
+                node.selectAll('.column-text').remove();
+                
+                const d = node.datum();
                 let y = -d.rectHeight/2 + 45;  // Start position after title
                 
+                // Add title first
+                node.append('text')
+                    .attr('class', 'field-text')
+                    .attr('y', -d.rectHeight/2 + 20)
+                    .attr('text-anchor', 'middle')
+                    .text(d.id)
+                    .style('font-weight', 'bold')
+                    .style('font-size', '14px')
+                    .style('fill', d.has_relationships ? 'var(--text-color)' : 'var(--node-border-inactive)');
+                
+                // Add key fields
                 if (d.fields.pk) {{
-                    g.append('text')
+                    node.append('text')
+                        .attr('class', 'field-text')
                         .attr('y', y)
                         .attr('text-anchor', 'middle')
                         .text(`PK ${{d.fields.pk}}`)
@@ -417,7 +458,8 @@ def create_html_viewer(data, output_file, db_name=None):
                     .map(l => l.source.id === d.id ? l.sourceField : l.targetField));
                 
                 d.fields.fks.forEach(fk => {{
-                    g.append('text')
+                    node.append('text')
+                        .attr('class', 'field-text')
                         .attr('y', y)
                         .attr('text-anchor', 'middle')
                         .text(`FK ${{fk}}`)
@@ -425,16 +467,74 @@ def create_html_viewer(data, output_file, db_name=None):
                         .style('font-size', '12px');
                     y += 20;
                 }});
+                
+                // Add separator line if expanded
+                if (d.expanded && d.columns.length > 0) {{
+                    node.append('line')
+                        .attr('class', 'field-text')
+                        .attr('x1', -d.rectWidth/2 + 10)
+                        .attr('x2', d.rectWidth/2 - 10)
+                        .attr('y1', y + 5)
+                        .attr('y2', y + 5)
+                        .style('stroke', 'var(--node-border-inactive)')
+                        .style('stroke-width', '1px')
+                        .style('stroke-dasharray', '4,4');
+                    y += 15;
+                }}
+                
+                // Add columns if expanded
+                if (d.expanded) {{
+                    d.columns.forEach(col => {{
+                        const isPK = col.key_type === 'PRI';
+                        const isFK = col.key_type === 'MUL';
+                        node.append('text')
+                            .attr('class', 'column-text')
+                            .attr('y', y)
+                            .attr('text-anchor', 'middle')
+                            .text(`${{col.column_name}} (${{col.data_type}})`)
+                            .style('fill', isPK ? 'var(--pk-color)' : (isFK ? 'var(--fk-color)' : 'var(--text-color)'))
+                            .style('font-size', '11px');
+                        y += 20;
+                    }});
+                }}
+            }}
+            
+            node.each(function(d) {{ updateNodeContent(d3.select(this)); }});
+            
+            // Remove the separate table name addition since it's now part of updateNodeContent
+            node.selectAll('.table-name').remove();
+            
+            // Handle click to expand/collapse
+            node.on('click', function(event, d) {{
+                d.expanded = !d.expanded;
+                updateNodeDimensions(d);
+                
+                // Update rectangle size
+                d3.select(this).select('rect')
+                    .transition()
+                    .duration(300)
+                    .attr('width', d.rectWidth)
+                    .attr('height', d.rectHeight)
+                    .attr('x', -d.rectWidth / 2)
+                    .attr('y', -d.rectHeight / 2);
+                
+                // Update content
+                updateNodeContent(d3.select(this));
+                
+                // Restart simulation to adjust layout
+                simulation.alpha(0.3).restart();
             }});
             
             const tooltip = d3.select('#tooltip');
             
             // Node tooltips
             node.on('mouseover', function(event, d) {{
-                tooltip.style('display', 'block')
-                    .html(`<div class="title">${{d.id}}</div>${{d.description}}`)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY + 10) + 'px');
+                if (!d.expanded) {{  // Only show tooltip when not expanded
+                    tooltip.style('display', 'block')
+                        .html(`<div class="title">${{d.id}}</div>${{d.description}}`)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY + 10) + 'px');
+                }}
             }})
             .on('mousemove', function(event) {{
                 tooltip.style('left', (event.pageX + 10) + 'px')
@@ -507,7 +607,7 @@ def create_html_viewer(data, output_file, db_name=None):
             
             // Wait for simulation to settle before calculating initial zoom
             simulation.on('end', () => {{
-            const bounds = g.node().getBBox();
+                const bounds = g.node().getBBox();
                 const fullWidth = width;
                 const fullHeight = height;
                 
@@ -517,14 +617,14 @@ def create_html_viewer(data, output_file, db_name=None):
                     bounds.height / fullHeight
                 );
                 
-            const transform = d3.zoomIdentity
-                .translate(
+                const transform = d3.zoomIdentity
+                    .translate(
                         fullWidth/2 - scale * (bounds.x + bounds.width/2),
                         fullHeight/2 - scale * (bounds.y + bounds.height/2)
-                )
-                .scale(scale);
-            
-            svg.call(zoom.transform, transform);
+                    )
+                    .scale(scale);
+                
+                svg.call(zoom.transform, transform);
             }});
         }});
     </script>
