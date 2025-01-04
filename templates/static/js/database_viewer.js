@@ -325,12 +325,10 @@ function initializeVisualization(data) {
     
     // Node tooltips
     node.on('mouseover', function(event, d) {
-        if (!d.expanded) {  // Only show tooltip when not expanded
-            tooltip.style('display', 'block')
-                .html(`<div class="title">${d.id}</div>${d.description}`)
-                .style('left', (event.pageX + 10) + 'px')
-                .style('top', (event.pageY + 10) + 'px');
-        }
+        tooltip.style('display', 'block')
+            .html(`<div class="title">${d.id}</div>${d.description}`)
+            .style('left', (event.pageX + 10) + 'px')
+            .style('top', (event.pageY + 10) + 'px');
     })
     .on('mousemove', function(event) {
         tooltip.style('left', (event.pageX + 10) + 'px')
