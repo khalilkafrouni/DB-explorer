@@ -190,7 +190,10 @@ function initializeVisualization(data) {
             .style('font-size', '14px')
             .style('fill', d.has_relationships ? 'var(--text-color)' : 'var(--node-border-inactive)');
         
-        // Add key fields
+        // Track shown columns to avoid duplication
+        const shownColumns = new Set();
+        
+        // Add key fields and track them
         if (d.fields.pk) {
             node.append('text')
                 .attr('class', 'field-text')
@@ -200,6 +203,7 @@ function initializeVisualization(data) {
                 .style('fill', d.has_relationships ? 'var(--pk-color)' : 'var(--node-border-inactive)')
                 .style('font-size', '12px');
             y += 20;
+            shownColumns.add(d.fields.pk);
         }
         
         // Get all FK relationships for this node
@@ -216,36 +220,38 @@ function initializeVisualization(data) {
                 .style('fill', connectedFks.has(fk) ? 'var(--fk-color)' : 'var(--node-border-inactive)')
                 .style('font-size', '12px');
             y += 20;
+            shownColumns.add(fk);
         });
         
-        // Add separator line if expanded
+        // Add separator line if expanded and there are columns to show
         if (d.expanded && d.columns.length > 0) {
-            node.append('line')
-                .attr('class', 'field-text')
-                .attr('x1', -d.rectWidth/2 + 10)
-                .attr('x2', d.rectWidth/2 - 10)
-                .attr('y1', y + 5)
-                .attr('y2', y + 5)
-                .style('stroke', 'var(--node-border-inactive)')
-                .style('stroke-width', '1px')
-                .style('stroke-dasharray', '4,4');
-            y += 15;
-        }
-        
-        // Add columns if expanded
-        if (d.expanded) {
-            d.columns.forEach(col => {
-                const isPK = col.key_type === 'PRI';
-                const isFK = col.key_type === 'MUL';
-                node.append('text')
-                    .attr('class', 'column-text')
-                    .attr('y', y)
-                    .attr('text-anchor', 'middle')
-                    .text(`${col.column_name} (${col.data_type})`)
-                    .style('fill', isPK ? 'var(--pk-color)' : (isFK ? 'var(--fk-color)' : 'var(--text-color)'))
-                    .style('font-size', '11px');
-                y += 20;
-            });
+            // Filter out columns that are already shown as PK or FK
+            const remainingColumns = d.columns.filter(col => !shownColumns.has(col.column_name));
+            
+            if (remainingColumns.length > 0) {
+                node.append('line')
+                    .attr('class', 'field-text')
+                    .attr('x1', -d.rectWidth/2 + 10)
+                    .attr('x2', d.rectWidth/2 - 10)
+                    .attr('y1', y + 5)
+                    .attr('y2', y + 5)
+                    .style('stroke', 'var(--node-border-inactive)')
+                    .style('stroke-width', '1px')
+                    .style('stroke-dasharray', '4,4');
+                y += 15;
+                
+                // Add remaining columns
+                remainingColumns.forEach(col => {
+                    node.append('text')
+                        .attr('class', 'column-text')
+                        .attr('y', y)
+                        .attr('text-anchor', 'middle')
+                        .text(`${col.column_name} (${col.data_type})`)
+                        .style('fill', 'var(--text-color)')
+                        .style('font-size', '11px');
+                    y += 20;
+                });
+            }
         }
     }
     
