@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database Relationships</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(45, 52, 54, 0.95);
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        #diagram {
+            width: 100%;
+            height: 100%;
+            background: white;
+            padding-top: 60px; /* Make space for header */
+        }
+        .node rect {
+            fill: #fff;
+            stroke-width: 2px;
+            cursor: pointer;
+            rx: 4;
+            ry: 4;
+        }
+        .node text {
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .link {
+            fill: none;
+            stroke: #636e72;
+            stroke-width: 1.5px;
+            stroke-dasharray: 5,5;
+            cursor: pointer;
+        }
+        .link-label {
+            font-size: 10px;
+            fill: #636e72;
+            text-anchor: middle;
+            pointer-events: none;
+        }
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: rgba(45, 52, 54, 0.95);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            min-width: 200px;
+            max-width: 500px;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        #tooltip .title {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #tooltip .relationship {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            z-index: 1000;
+            display: flex;
+            overflow: hidden;
+        }
+        #zoom-controls button {
+            border: none;
+            background: white;
+            padding: 12px 16px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #zoom-controls button:hover {
+            background: #f1f2f6;
+        }
+        #zoom-controls button:not(:last-child) {
+            border-right: 1px solid #dfe6e9;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">DB Explorer: E-commerce System Demo</div>
+    <div id="diagram"></div>
+    <div id="tooltip"></div>
+    <div id="zoom-controls">
+        <button onclick="zoomIn()">+</button>
+        <button onclick="resetZoom()">Reset</button>
+        <button onclick="zoomOut()">−</button>
+    </div>
+    
+    <script>
+        window.addEventListener('load', function() {
+            const data = {
+                "nodes": [
+                    {
+                        "id": "customers",
+                        "description": "Contains customer information including personal details, contact information, and account preferences.",
+                        "fields": {
+                            "pk": "customer_id",
+                            "fks": []
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "orders",
+                        "description": "Stores order information including order status, shipping details, and payment information.",
+                        "fields": {
+                            "pk": "order_id",
+                            "fks": ["customer_id", "shipping_address_id", "payment_method_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "order_items",
+                        "description": "Contains individual items within each order, including quantity, price, and product details.",
+                        "fields": {
+                            "pk": "order_item_id",
+                            "fks": ["order_id", "product_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "products",
+                        "description": "Product catalog with details like name, description, price, and inventory levels.",
+                        "fields": {
+                            "pk": "product_id",
+                            "fks": ["category_id", "supplier_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "categories",
+                        "description": "Product categories and subcategories for organization.",
+                        "fields": {
+                            "pk": "category_id",
+                            "fks": ["parent_category_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "suppliers",
+                        "description": "Information about product suppliers and manufacturers.",
+                        "fields": {
+                            "pk": "supplier_id",
+                            "fks": []
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "shipping_addresses",
+                        "description": "Customer shipping addresses and delivery preferences.",
+                        "fields": {
+                            "pk": "address_id",
+                            "fks": ["customer_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "payment_methods",
+                        "description": "Stored payment methods for customers.",
+                        "fields": {
+                            "pk": "payment_method_id",
+                            "fks": ["customer_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "reviews",
+                        "description": "Product reviews and ratings from customers.",
+                        "fields": {
+                            "pk": "review_id",
+                            "fks": ["product_id", "customer_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "inventory",
+                        "description": "Product inventory levels and stock tracking.",
+                        "fields": {
+                            "pk": "inventory_id",
+                            "fks": ["product_id", "warehouse_id"]
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "warehouses",
+                        "description": "Information about storage locations and warehouses.",
+                        "fields": {
+                            "pk": "warehouse_id",
+                            "fks": []
+                        },
+                        "has_relationships": true
+                    },
+                    {
+                        "id": "promotions",
+                        "description": "Active and past promotional campaigns.",
+                        "fields": {
+                            "pk": "promotion_id",
+                            "fks": []
+                        },
+                        "has_relationships": false
+                    },
+                    {
+                        "id": "wish_lists",
+                        "description": "Customer wish lists and saved items.",
+                        "fields": {
+                            "pk": "wish_list_id",
+                            "fks": ["customer_id"]
+                        },
+                        "has_relationships": true
+                    }
+                ],
+                "links": [
+                    {
+                        "source": "customers",
+                        "target": "orders",
+                        "sourceField": "customer_id",
+                        "targetField": "customer_id"
+                    },
+                    {
+                        "source": "orders",
+                        "target": "order_items",
+                        "sourceField": "order_id",
+                        "targetField": "order_id"
+                    },
+                    {
+                        "source": "products",
+                        "target": "order_items",
+                        "sourceField": "product_id",
+                        "targetField": "product_id"
+                    },
+                    {
+                        "source": "categories",
+                        "target": "products",
+                        "sourceField": "category_id",
+                        "targetField": "category_id"
+                    },
+                    {
+                        "source": "suppliers",
+                        "target": "products",
+                        "sourceField": "supplier_id",
+                        "targetField": "supplier_id"
+                    },
+                    {
+                        "source": "customers",
+                        "target": "shipping_addresses",
+                        "sourceField": "customer_id",
+                        "targetField": "customer_id"
+                    },
+                    {
+                        "source": "customers",
+                        "target": "payment_methods",
+                        "sourceField": "customer_id",
+                        "targetField": "customer_id"
+                    },
+                    {
+                        "source": "customers",
+                        "target": "reviews",
+                        "sourceField": "customer_id",
+                        "targetField": "customer_id"
+                    },
+                    {
+                        "source": "products",
+                        "target": "reviews",
+                        "sourceField": "product_id",
+                        "targetField": "product_id"
+                    },
+                    {
+                        "source": "products",
+                        "target": "inventory",
+                        "sourceField": "product_id",
+                        "targetField": "product_id"
+                    },
+                    {
+                        "source": "warehouses",
+                        "target": "inventory",
+                        "sourceField": "warehouse_id",
+                        "targetField": "warehouse_id"
+                    },
+                    {
+                        "source": "customers",
+                        "target": "wish_lists",
+                        "sourceField": "customer_id",
+                        "targetField": "customer_id"
+                    }
+                ]
+            };
+
+            const width = window.innerWidth;
+            const height = window.innerHeight - 60;
+            
+            const measureSvg = d3.select('body')
+                .append('svg')
+                .style('visibility', 'hidden')
+                .style('position', 'absolute');
+            
+            function getTextWidth(text, fontSize = '14px') {
+                const textElement = measureSvg
+                    .append('text')
+                    .style('font-size', fontSize)
+                    .style('font-family', "'JetBrains Mono', monospace")
+                    .text(text);
+                const width = textElement.node().getBBox().width;
+                textElement.remove();
+                return width;
+            }
+            
+            const svg = d3.select('#diagram')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 8])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+            
+            svg.call(zoom);
+            
+            const g = svg.append('g');
+            
+            const simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(250))
+                .force('charge', d3.forceManyBody().strength(-2000))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('x', d3.forceX(width / 2).strength(node => {
+                    return node.has_relationships ? 0.01 : 0.1;
+                }))
+                .force('y', d3.forceY(height / 2).strength(node => {
+                    return node.has_relationships ? 0.01 : 0.1;
+                }))
+                .force('collision', d3.forceCollide().radius(150));
+            
+            const link = g.selectAll('.link')
+                .data(data.links)
+                .join('path')
+                .attr('class', 'link');
+            
+            const linkLabel = g.selectAll('.link-label')
+                .data(data.links)
+                .join('text')
+                .attr('class', 'link-label')
+                .text(d => `${d.sourceField} → ${d.targetField}`);
+            
+            const node = g.selectAll('.node')
+                .data(data.nodes)
+                .join('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+            
+            node.each(function(d) {
+                const numFields = (d.fields.pk ? 1 : 0) + d.fields.fks.length;
+                const padding = 20;
+                const fieldHeight = 20;
+                const titleHeight = 30;
+                
+                const textsToMeasure = [
+                    d.id,
+                    d.fields.pk ? `PK ${d.fields.pk}` : '',
+                    ...d.fields.fks.map(fk => `FK ${fk}`)
+                ];
+                
+                const maxWidth = Math.max(...textsToMeasure.map(text => getTextWidth(text)));
+                d.rectWidth = Math.max(200, maxWidth + 40);
+                d.rectHeight = titleHeight + (numFields * fieldHeight) + (padding * 2);
+            });
+            
+            measureSvg.remove();
+            
+            node.append('rect')
+                .attr('width', d => d.rectWidth)
+                .attr('height', d => d.rectHeight)
+                .attr('x', d => -d.rectWidth / 2)
+                .attr('y', d => -d.rectHeight / 2)
+                .style('stroke', d => d.has_relationships ? '#2d3436' : '#95a5a6');
+            
+            node.append('text')
+                .attr('y', d => -d.rectHeight/2 + 20)
+                .attr('text-anchor', 'middle')
+                .text(d => d.id)
+                .style('font-weight', 'bold')
+                .style('font-size', '14px')
+                .style('fill', d => d.has_relationships ? '#2d3436' : '#95a5a6');
+            
+            node.each(function(d) {
+                const g = d3.select(this);
+                let y = -d.rectHeight/2 + 45;
+                
+                if (d.fields.pk) {
+                    g.append('text')
+                        .attr('y', y)
+                        .attr('text-anchor', 'middle')
+                        .text(`PK ${d.fields.pk}`)
+                        .style('fill', d.has_relationships ? '#2980b9' : '#95a5a6')
+                        .style('font-size', '12px');
+                    y += 20;
+                }
+                
+                const connectedFks = new Set(data.links
+                    .filter(l => l.source.id === d.id || l.target.id === d.id)
+                    .map(l => l.source.id === d.id ? l.sourceField : l.targetField));
+                
+                d.fields.fks.forEach(fk => {
+                    g.append('text')
+                        .attr('y', y)
+                        .attr('text-anchor', 'middle')
+                        .text(`FK ${fk}`)
+                        .style('fill', connectedFks.has(fk) ? '#c0392b' : '#95a5a6')
+                        .style('font-size', '12px');
+                    y += 20;
+                });
+            });
+            
+            const tooltip = d3.select('#tooltip');
+            
+            node.on('mouseover', function(event, d) {
+                tooltip.style('display', 'block')
+                    .html(`<div class="title">${d.id}</div>${d.description}`)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY + 10) + 'px');
+            })
+            .on('mousemove', function(event) {
+                tooltip.style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY + 10) + 'px');
+            })
+            .on('mouseout', function() {
+                tooltip.style('display', 'none');
+            });
+            
+            simulation.on('tick', () => {
+                link.attr('d', d => {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dr = Math.sqrt(dx * dx + dy * dy);
+                    return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+                });
+                
+                linkLabel.attr('transform', d => {
+                    const x = (d.source.x + d.target.x) / 2;
+                    const y = (d.source.y + d.target.y) / 2;
+                    return `translate(${x},${y})`;
+                });
+                
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+            
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                event.subject.fx = event.subject.x;
+                event.subject.fy = event.subject.y;
+            }
+            
+            function dragged(event, d) {
+                event.subject.fx = event.x;
+                event.subject.fy = event.y;
+            }
+            
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                event.subject.fx = null;
+                event.subject.fy = null;
+            }
+            
+            window.zoomIn = function() {
+                svg.transition().duration(300).call(zoom.scaleBy, 1.2);
+            };
+            
+            window.zoomOut = function() {
+                svg.transition().duration(300).call(zoom.scaleBy, 0.8);
+            };
+            
+            window.resetZoom = function() {
+                svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
+            };
+            
+            const bounds = g.node().getBBox();
+            const scale = 0.8 / Math.max(
+                bounds.width / width,
+                bounds.height / height
+            );
+            const transform = d3.zoomIdentity
+                .translate(width/2, height/2)
+                .scale(scale)
+                .translate(-bounds.x - bounds.width/2, -bounds.y - bounds.height/2);
+            
+            svg.call(zoom.transform, transform);
+        });
+    </script>
+</body>
+</html> 

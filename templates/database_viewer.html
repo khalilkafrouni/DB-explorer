@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Database Relationships</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/styles.css">
+</head>
+<body>
+    <div id="header">DB Explorer: <span id="db-name"></span></div>
+    <div id="diagram"></div>
+    <div id="tooltip"></div>
+    <div id="zoom-controls">
+        <button onclick="zoomIn()">+</button>
+        <button onclick="resetZoom()">Reset</button>
+        <button onclick="zoomOut()">−</button>
+    </div>
+    
+    <script>
+        // Initialize the data from Python
+        window.addEventListener('load', function() {
+            const data = DATA_PLACEHOLDER;  // This will be replaced by Python
+            initializeVisualization(data);
+        });
+    </script>
+    <script src="static/js/database_viewer.js"></script>
+</body>
+</html> 

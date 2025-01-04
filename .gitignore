@@ -3,7 +3,6 @@
 *.csv
 secrets.toml
 sandbox.ipynb
-*.html
 database_relationships.md
 *_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]/
 
