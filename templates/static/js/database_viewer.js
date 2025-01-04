@@ -81,7 +81,9 @@ function initializeVisualization(data) {
         .force('y', d3.forceY(height / 2).strength(node => {
             return node.has_relationships ? 0.01 : 0.1;
         }))
-        .force('collision', d3.forceCollide().radius(getCollisionRadius).strength(1).iterations(4));
+        .force('collision', d3.forceCollide().radius(getCollisionRadius).strength(1).iterations(4))
+        .alphaDecay(0.1)  // Faster decay of the simulation's "energy"
+        .velocityDecay(0.7);  // Stronger damping of node velocity
 
     simulation.on('tick', () => {
         link.attr('d', d => {
@@ -305,7 +307,7 @@ function initializeVisualization(data) {
     });
     
     function dragstarted(event, d) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
+        if (!event.active) simulation.alphaTarget(0.1).restart();  // Reduced alpha target
         d.fx = d.x;
         d.fy = d.y;
     }
@@ -317,8 +319,9 @@ function initializeVisualization(data) {
     
     function dragended(event, d) {
         if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
+        // Keep the node fixed at its final position
+        d.fx = d.x;
+        d.fy = d.y;
     }
     
     // Wait for simulation to settle before calculating initial zoom
