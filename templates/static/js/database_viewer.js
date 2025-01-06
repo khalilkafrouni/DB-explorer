@@ -321,6 +321,10 @@ function initializeVisualization(data) {
     
     // Handle click to expand/collapse
     node.on('click', function(event, d) {
+        // Bring clicked node to front by moving it to the end of its parent container
+        const clickedNode = this;
+        clickedNode.parentNode.appendChild(clickedNode);
+
         d.expanded = !d.expanded;
         updateNodeDimensions(d);
         
