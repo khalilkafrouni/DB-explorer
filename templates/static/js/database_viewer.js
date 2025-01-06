@@ -127,8 +127,8 @@ function initializeVisualization(data) {
             // Very subtle clustering force
             return 25.0;
         }))
-        .alphaDecay(0.1)  // Faster decay of the simulation's "energy"
-        .velocityDecay(0.7);  // Stronger damping of node velocity
+        .alpha(1)           // Initial high energy
+        .alphaDecay(0.1);   // Initial normal decay
 
     // Update clusters initially
     updateClusters(data.nodes, data.links);
@@ -383,8 +383,11 @@ function initializeVisualization(data) {
             }
         });
 
-        // Reset simulation alpha to allow movement
-        simulation.alpha(0.3).restart();
+        // Reset simulation with low energy and high decay for recalculations
+        simulation
+            .alpha(0.3)        // Low energy for subsequent updates
+            .alphaDecay(0.2)   // Higher decay for faster stabilization
+            .restart();
     });
     
     const tooltip = d3.select('#tooltip');
