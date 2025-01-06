@@ -44,6 +44,45 @@ function initializeVisualization(data) {
     
     const g = svg.append('g');
     
+    // Function to identify clusters and their centers
+    function updateClusters(nodes, links) {
+        // Reset cluster assignments
+        nodes.forEach(node => {
+            node.cluster = null;
+            node.isClusterCenter = false;
+        });
+
+        // Count connections for each node
+        const connectionCounts = new Map();
+        links.forEach(link => {
+            const sourceId = link.source.id || link.source;
+            const targetId = link.target.id || link.target;
+            
+            connectionCounts.set(sourceId, (connectionCounts.get(sourceId) || 0) + 1);
+            connectionCounts.set(targetId, (connectionCounts.get(targetId) || 0) + 1);
+        });
+
+        // Identify cluster centers (nodes with 3+ connections)
+        nodes.forEach(node => {
+            if ((connectionCounts.get(node.id) || 0) >= 3) {
+                node.isClusterCenter = true;
+                node.cluster = node.id; // Use node's ID as cluster identifier
+            }
+        });
+
+        // Assign nodes to clusters based on connections to cluster centers
+        links.forEach(link => {
+            const source = nodes.find(n => n.id === (link.source.id || link.source));
+            const target = nodes.find(n => n.id === (link.target.id || link.target));
+            
+            if (source.isClusterCenter && !target.cluster) {
+                target.cluster = source.id;
+            } else if (target.isClusterCenter && !source.cluster) {
+                source.cluster = target.id;
+            }
+        });
+    }
+
     // Calculate collision radius function (for reuse)
     function getCollisionRadius(d) {
         // Base padding for all nodes
@@ -82,10 +121,33 @@ function initializeVisualization(data) {
             return node.has_relationships ? 0.01 : 0.1;
         }))
         .force('collision', d3.forceCollide().radius(getCollisionRadius).strength(1).iterations(4))
+        // Add clustering force
+        .force('cluster', d3.forceRadial(100, width / 2, height / 2).strength(node => {
+            if (!node.cluster) return 0;
+            // Very subtle clustering force
+            return 25.0;
+        }))
         .alphaDecay(0.1)  // Faster decay of the simulation's "energy"
         .velocityDecay(0.7);  // Stronger damping of node velocity
 
+    // Update clusters initially
+    updateClusters(data.nodes, data.links);
+
     simulation.on('tick', () => {
+        // Update cluster centers' positions
+        data.nodes.forEach(node => {
+            if (node.cluster && !node.isClusterCenter) {
+                const center = data.nodes.find(n => n.id === node.cluster);
+                if (center) {
+                    // Very subtle direct position adjustment
+                    const dx = center.x - node.x;
+                    const dy = center.y - node.y;
+                    node.x += dx * 0.05;  // Reduced from 0.2
+                    node.y += dy * 0.05;  // Reduced from 0.2
+                }
+            }
+        });
+
         link.attr('d', d => {
             const dx = d.target.x - d.source.x;
             const dy = d.target.y - d.source.y;
