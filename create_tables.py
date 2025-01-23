@@ -26,14 +26,24 @@ def generate_create_tables_sql(csv_directory: str = None, wait_for_csv: bool = F
 
     relationships_file = os.path.join(csv_directory, 'verified_relationships.csv')
     columns_file = os.path.join(csv_directory, 'table_columns.csv')
+    descriptions_file = os.path.join(csv_directory, 'table_descriptions.csv')
     
     # Check if required files exist
-    if not os.path.exists(relationships_file) or not os.path.exists(columns_file):
+    required_files = [relationships_file, columns_file, descriptions_file]
+    missing_files = [f for f in required_files if not os.path.exists(f)]
+    if missing_files:
         if not wait_for_csv:
-            print(f"Required CSV files not found in {csv_directory}")
+            print(f"Required files not found: {', '.join(missing_files)}")
             return False
         print("Waiting for CSV files to be created...")
         return False
+
+    # Read table descriptions
+    table_descriptions = {}
+    with open(descriptions_file, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            table_descriptions[row['table']] = row['description']
 
     # Read relationships from CSV
     relationships = []
@@ -99,6 +109,10 @@ SET FOREIGN_KEY_CHECKS=0;
 
     # Generate CREATE TABLE statements
     for table_name in table_columns.keys():
+        # Add table description as comment
+        description = table_descriptions.get(table_name, "No description available")
+        sql_content += f"\n-- {description}\n"
+        
         sql_content += f"\nCREATE TABLE `{table_name}` (\n"
         
         # Add columns
