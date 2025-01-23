@@ -14,6 +14,8 @@ from renderer import create_html_viewer, serve_html, generate_d3_data, create_te
 from datetime import datetime
 import os
 from package_viewer import package_viewer
+import argparse
+from create_tables import generate_create_tables_sql
 
 def create_output_directory(db_name: str) -> Path:
     """Create a timestamped output directory for the current run"""
@@ -785,38 +787,20 @@ def main(csv_file: str = None, should_package: bool = False):
     serve_html(html_file)
     return
 
-if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Analyze database relationships or generate diagram from CSV')
-    parser.add_argument('--csv', type=str, help='Path to CSV file containing verified relationships')
-    parser.add_argument('--refresh-descriptions', action='store_true', 
-                       help='Force regeneration of table descriptions')
-    parser.add_argument('--package', action='store_true',
-                       help='Create a shareable package of the viewer and its dependencies')
+def main_cli():
+    parser = argparse.ArgumentParser(description='Database Explorer CLI')
+    parser.add_argument('--create-tables', action='store_true', help='Generate CREATE TABLE statements')
+    parser.add_argument('--csv-dir', type=str, help='Directory containing CSV files', default=None)
+    parser.add_argument('--wait-for-csv', action='store_true', help='Wait for CSV files if they don\'t exist')
     
     args = parser.parse_args()
     
-    if args.refresh_descriptions:
-        # Initialize necessary components
-        
-        with open("secrets.toml", "rb") as f:
-            secrets = tomli.load(f)
-        
-        openai_client = OpenAI(api_key=secrets['openai']['api_key'])
-        engine = initialize_engine(
-            secrets['db']['username'],
-            secrets['db']['password'],
-            secrets['db']['url'],
-            secrets['db']['name'],
-            secrets['db']['port']
-        )
-        
-        # Get all tables from database
-        all_tables = set(df['tables_in_database']) if (df := get_all_tables(engine)).size > 0 else set()
-        
-        # Generate and save descriptions
-        table_descriptions = get_and_save_table_descriptions(engine, all_tables, openai_client)
-        print("Table descriptions refreshed")
-    
-    main(args.csv, args.package)
+    if args.create_tables:
+        success = generate_create_tables_sql(args.csv_dir, args.wait_for_csv)
+        if not success:
+            print("Failed to create tables. Make sure the required CSV files exist.")
+            return 1
+    return 0
+
+if __name__ == "__main__":
+    exit(main_cli())

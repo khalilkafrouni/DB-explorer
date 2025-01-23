@@ -1,10 +1,43 @@
 import csv
 import os
+from pathlib import Path
 
-def generate_create_tables_sql():
+def generate_create_tables_sql(csv_directory: str = None, wait_for_csv: bool = False):
+    """
+    Generate SQL CREATE TABLE statements from relationship and column CSV files.
+    
+    Args:
+        csv_directory (str): Directory containing the CSV files. If None, will wait for the latest directory.
+        wait_for_csv (bool): Whether to wait for CSV files to be created if they don't exist.
+    
+    Returns:
+        bool: True if tables were created successfully, False otherwise.
+    """
+    # If no directory specified, find the latest one
+    if not csv_directory:
+        directories = [d for d in os.listdir() if d.startswith('bettorfantasy_sisense_staging_')]
+        if not directories:
+            if not wait_for_csv:
+                print("No CSV directory found and wait_for_csv is False")
+                return False
+            print("Waiting for CSV files to be created...")
+            return False
+        csv_directory = max(directories)  # Get the latest directory
+
+    relationships_file = os.path.join(csv_directory, 'verified_relationships.csv')
+    columns_file = os.path.join(csv_directory, 'table_columns.csv')
+    
+    # Check if required files exist
+    if not os.path.exists(relationships_file) or not os.path.exists(columns_file):
+        if not wait_for_csv:
+            print(f"Required CSV files not found in {csv_directory}")
+            return False
+        print("Waiting for CSV files to be created...")
+        return False
+
     # Read relationships from CSV
     relationships = []
-    with open('bettorfantasy_sisense_staging_20250104_121126/verified_relationships.csv', 'r') as f:
+    with open(relationships_file, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
             # Only consider forward relationships (→) to avoid redundancy
@@ -13,7 +46,7 @@ def generate_create_tables_sql():
 
     # Read table columns from CSV
     table_columns = {}
-    with open('bettorfantasy_sisense_staging_20250104_121126/table_columns.csv', 'r') as f:
+    with open(columns_file, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
             table_name = row['table_name']
@@ -111,9 +144,13 @@ SET FOREIGN_KEY_CHECKS=0;
     # Re-enable foreign key checks
     sql_content += "\nSET FOREIGN_KEY_CHECKS=1;\n"
 
-    # Write the generated SQL to file
-    with open('create_tables.sql', 'w') as f:
+    # Write the generated SQL to file in the same directory as the CSV files
+    output_file = os.path.join(csv_directory, 'create_tables.sql')
+    with open(output_file, 'w') as f:
         f.write(sql_content)
+        
+    print(f"Successfully created {output_file}")
+    return True
 
 if __name__ == "__main__":
     generate_create_tables_sql() 
