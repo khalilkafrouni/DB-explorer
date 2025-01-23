@@ -7,7 +7,9 @@ def generate_create_tables_sql():
     with open('bettorfantasy_sisense_staging_20250104_121126/verified_relationships.csv', 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            relationships.append(row)
+            # Only consider forward relationships (→) to avoid redundancy
+            if row['relationship'].startswith('→') and row['verified'] == 'True':
+                relationships.append(row)
 
     # Read table columns from CSV
     table_columns = {}
@@ -33,29 +35,29 @@ def generate_create_tables_sql():
     fk_relationships = {}
     pk_fields = {}
     
-    # First pass: collect all relationships and primary keys
+    # Process relationships
     for rel in relationships:
-        table_name = rel['table_name']
-        field_name = rel['field_name']
-        field_type = rel['field_type']
+        source_table = rel['table_name']
+        source_field = rel['field_name']
         
-        # Store primary keys
-        if field_type == 'PK':
-            pk_fields[table_name] = field_name
+        # Parse target table and field from the relationship
+        target_info = rel['relationship'].split('.')
+        target_table = target_info[-2].split(' ')[-1]
+        target_field = target_info[-1]
+        
+        # Store primary key
+        if rel['field_type'] == 'PK':
+            pk_fields[source_table] = source_field
             
-        # Store foreign key relationships
-        if rel['relationship'].startswith('←'):  # This table has a foreign key
-            if table_name not in fk_relationships:
-                fk_relationships[table_name] = []
+        # Store foreign key relationship from target's perspective
+        if target_table not in fk_relationships:
+            fk_relationships[target_table] = []
             
-            referenced_table = rel['relationship'].split('.')[-2].split(' ')[-1]
-            referenced_field = rel['relationship'].split('.')[-1]
-            
-            fk_relationships[table_name].append({
-                'field': field_name,
-                'references_table': referenced_table,
-                'references_field': referenced_field
-            })
+        fk_relationships[target_table].append({
+            'field': target_field,
+            'references_table': source_table,
+            'references_field': source_field
+        })
 
     # SQL file header
     sql_content = """-- Auto-generated CREATE TABLE statements with foreign key relationships
@@ -85,9 +87,14 @@ SET FOREIGN_KEY_CHECKS=0;
                 
             columns.append(' '.join(col_def))
         
-        # Add primary key
+        # Add primary key if it exists in the relationships
         if table_name in pk_fields:
             columns.append(f"  PRIMARY KEY (`{pk_fields[table_name]}`)")
+        # If not in relationships but has a PRI key_type in columns, use that
+        else:
+            pri_keys = [col['name'] for col in table_columns[table_name] if col['key_type'] == 'PRI']
+            if pri_keys:
+                columns.append(f"  PRIMARY KEY (`{pri_keys[0]}`)")
         
         # Add foreign key constraints
         if table_name in fk_relationships:
